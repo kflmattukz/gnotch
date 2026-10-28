@@ -1,0 +1,9 @@
+{
+  "uuid": "gnotch@mattukz",
+  "name": "Gnotch",
+  "description": "A dynamic notch at the top of the screen: media, battery, notifications, calendar, to-dos, drives, Wi-Fi and Bluetooth.",
+  "shell-version": ["50"],
+  "settings-schema": "org.gnome.shell.extensions.gnotch",
+  "url": "",
+  "version-name": "0.1"
+}

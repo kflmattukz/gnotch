@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.gnotch" path="/org/gnome/shell/extensions/gnotch/">
+    <key name="enabled-widgets" type="as">
+      <default>['media', 'battery', 'network', 'calendar', 'todo', 'notifications', 'devices']</default>
+      <summary>Widgets shown in the notch</summary>
+    </key>
+    <key name="expand-delay-ms" type="u">
+      <default>150</default>
+      <summary>Hover time before the notch expands</summary>
+    </key>
+    <key name="collapse-delay-ms" type="u">
+      <default>400</default>
+      <summary>Time after the pointer leaves before the notch collapses</summary>
+    </key>
+    <key name="peek-duration-ms" type="u">
+      <default>3000</default>
+      <summary>How long a peek (track change, new notification...) stays visible</summary>
+    </key>
+    <key name="expanded-width" type="u">
+      <default>680</default>
+      <summary>Width of the expanded notch in pixels</summary>
+    </key>
+    <key name="glass-expanded" type="b">
+      <default>true</default>
+      <summary>Frosted glass when expanded</summary>
+      <description>The compact notch stays black; the expanded one turns into blurred glass matching Blur my Shell's top bar when it is active.</description>
+    </key>
+    <key name="hide-clock" type="b">
+      <default>true</default>
+      <summary>Hide the top bar clock (the idle notch shows the time instead)</summary>
+    </key>
+  </schema>
+</schemalist>

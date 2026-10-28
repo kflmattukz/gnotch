@@ -1,0 +1,233 @@
+/* ---- container ----
+ * Size, position and corner radius are driven by springs in notch.js,
+ * so the pill itself has no padding; each content layer brings its own.
+ */
+.gnotch {
+    /* the background is a separate tint layer over the glass (see notch.js) */
+    color: #fff;
+    font-size: 10.5pt;
+}
+
+.gnotch-clock {
+    font-weight: bold;
+    font-feature-settings: "tnum";
+}
+
+/* ---- compact pill ---- */
+.gnotch-compact { padding: 0 14px; spacing: 10px; }
+
+.gnotch-compact-title {
+    font-size: 9.5pt;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+/* album art: corner radius is set inline (concentric with the notch) */
+.gnotch-cover-fallback { color: rgba(255, 255, 255, 0.7); }
+
+.gnotch-eq {
+    spacing: 2px;
+    height: 16px;
+}
+
+.gnotch-eq-bar {
+    width: 3px;
+    border-radius: 2px;
+    background-color: #30d158;
+}
+
+.gnotch-battery-icon,
+.gnotch-battery-mini {
+    color: #fff;
+    transition-duration: 300ms;
+}
+.gnotch-battery-mini { font-weight: bold; font-feature-settings: "tnum"; }
+.gnotch-battery-icon.charging, .gnotch-battery-mini.charging { color: #30d158; }
+.gnotch-battery-icon.low, .gnotch-battery-mini.low { color: #ff453a; }
+
+/* ---- peek ---- */
+.gnotch-peek-row { spacing: 12px; padding: 0 18px; }
+.gnotch-peek-title { font-weight: bold; }
+.gnotch-peek-body { color: rgba(255, 255, 255, 0.6); font-size: 9pt; }
+.gnotch-peek-meter { spacing: 8px; }
+.gnotch-peek-track {
+    width: 110px;
+    height: 5px;
+    border-radius: 3px;
+    background-color: rgba(255, 255, 255, 0.18);
+}
+.gnotch-peek-fill { border-radius: 3px; background-color: #fff; }
+.gnotch-peek-value {
+    font-size: 9pt;
+    font-weight: bold;
+    font-feature-settings: "tnum";
+    min-width: 24px;
+    text-align: right;
+}
+.gnotch-peek-progress {
+    height: 2px;
+    margin: 0 26px 5px;
+    border-radius: 1px;
+    background-color: rgba(255, 255, 255, 0.28);
+}
+
+/* ---- expanded ---- */
+.gnotch-expanded {
+    spacing: 10px;
+    padding: 8px 18px 16px;
+}
+
+.gnotch-tabs { spacing: 4px; }
+
+.gnotch-tab-indicator {
+    border-radius: 99px;
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+.gnotch-tab {
+    padding: 5px 12px;
+    border-radius: 99px;
+    color: rgba(255, 255, 255, 0.5);
+    transition-duration: 220ms;
+}
+.gnotch-tab:hover { color: rgba(255, 255, 255, 0.85); }
+.gnotch-tab:checked { color: #fff; }
+
+.gnotch-home { spacing: 14px; }
+.gnotch-divider { width: 1px; background-color: rgba(255, 255, 255, 0.1); margin: 6px 0; }
+.gnotch-tiles { width: 236px; }
+
+.gnotch-page { spacing: 8px; }
+.gnotch-page-header { spacing: 8px; }
+.gnotch-page-title { font-weight: bold; font-size: 11pt; }
+.gnotch-empty { color: rgba(255, 255, 255, 0.45); padding: 12px; }
+.gnotch-list { spacing: 4px; }
+
+/* home tiles: equal squares, icon on top, text at the bottom */
+.gnotch-tile {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 10px 12px;
+    text-align: left;
+    transition-duration: 220ms;
+}
+.gnotch-tile:hover { background-color: rgba(255, 255, 255, 0.13); }
+.gnotch-tile:checked { background-color: #0a84ff; }
+.gnotch-tile:checked:hover { background-color: #3d9cff; }
+.gnotch-tile-icon { color: #fff; }
+.gnotch-tile-title { font-weight: bold; font-feature-settings: "tnum"; }
+.gnotch-tile-subtitle { font-size: 8.5pt; color: rgba(255, 255, 255, 0.65); }
+.gnotch-tile:checked .gnotch-tile-subtitle { color: rgba(255, 255, 255, 0.85); }
+
+/* battery tile */
+.gnotch-battery.low .gnotch-tile-title { color: #ff453a; }
+.gnotch-level {
+    height: 4px;
+    margin-top: 6px;
+    border-radius: 2px;
+    background-color: rgba(255, 255, 255, 0.12);
+}
+.gnotch-level-fill {
+    border-radius: 2px;
+    background-color: #fff;
+    transition-duration: 400ms;
+}
+.gnotch-battery.charging .gnotch-level-fill { background-color: #30d158; }
+.gnotch-battery.low .gnotch-level-fill { background-color: #ff453a; }
+
+/* wifi list */
+.gnotch-switch:checked { background-color: #0a84ff; color: #fff; }
+.gnotch-network-row:checked { background-color: rgba(10, 132, 255, 0.35); }
+
+.gnotch-icon-button,
+.gnotch-pill-button {
+    border-radius: 99px;
+    padding: 4px 8px;
+    color: rgba(255, 255, 255, 0.8);
+    transition-duration: 180ms;
+}
+.gnotch-pill-button { background-color: rgba(255, 255, 255, 0.1); font-size: 9pt; padding: 3px 12px; }
+.gnotch-icon-button:hover, .gnotch-pill-button:hover { background-color: rgba(255, 255, 255, 0.16); color: #fff; }
+
+/* list rows */
+.gnotch-row {
+    border-radius: 12px;
+    padding: 6px 10px;
+    spacing: 10px;
+    background-color: rgba(255, 255, 255, 0.05);
+    transition-duration: 200ms;
+}
+.gnotch-row:hover { background-color: rgba(255, 255, 255, 0.1); }
+.gnotch-row > StBoxLayout, .gnotch-row-main > StBoxLayout { spacing: 10px; }
+.gnotch-row-icon { margin-top: 2px; }
+.gnotch-row-title { font-weight: bold; }
+.gnotch-row-body { font-size: 9pt; color: rgba(255, 255, 255, 0.6); }
+.gnotch-row-meta { font-size: 8.5pt; color: rgba(255, 255, 255, 0.45); padding-left: 8px; }
+.gnotch-row.done .gnotch-todo-text { text-decoration: line-through; }
+
+/* ---- media ---- */
+.gnotch-media { spacing: 6px; }
+.gnotch-media-top { spacing: 12px; }
+.gnotch-media-art-button { border-radius: 14px; }
+.gnotch-media-info { spacing: 1px; }
+.gnotch-media-app { font-size: 8pt; color: rgba(255, 255, 255, 0.45); text-transform: uppercase; }
+.gnotch-media-title { font-weight: bold; font-size: 12pt; }
+.gnotch-media-artist { color: rgba(255, 255, 255, 0.65); font-size: 9.5pt; }
+.gnotch-eq-large { spacing: 3px; height: 26px; }
+.gnotch-eq-large .gnotch-eq-bar { width: 4px; }
+.gnotch-media-controls { spacing: 18px; }
+.gnotch-media-button {
+    border-radius: 99px;
+    padding: 9px;
+    color: #fff;
+    transition-duration: 180ms;
+}
+.gnotch-media-button:hover { background-color: rgba(255, 255, 255, 0.12); }
+.gnotch-media-button:insensitive { color: rgba(255, 255, 255, 0.3); }
+.gnotch-media-button.primary { background-color: #fff; color: #000; padding: 12px; }
+.gnotch-media-button.primary:hover { background-color: rgba(255, 255, 255, 0.85); }
+
+/* ---- to-do ---- */
+.gnotch-entry {
+    border-radius: 12px;
+    padding: 6px 12px;
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border: none;
+    box-shadow: none;
+    transition-duration: 200ms;
+}
+.gnotch-entry:hover { background-color: rgba(255, 255, 255, 0.11); }
+.gnotch-entry:focus { background-color: rgba(255, 255, 255, 0.14); }
+
+/* ---- calendar ---- */
+.gnotch-calendar { spacing: 18px; }
+.gnotch-cal-header { spacing: 4px; padding-bottom: 4px; }
+.gnotch-cal-weekday {
+    font-size: 8.5pt;
+    color: rgba(255, 255, 255, 0.45);
+    padding: 2px 0;
+}
+.gnotch-cal-day {
+    width: 28px;
+    height: 24px;
+    border-radius: 99px;
+    font-size: 9pt;
+    font-feature-settings: "tnum";
+    color: #fff;
+    transition-duration: 200ms;
+}
+.gnotch-cal-day:hover { background-color: rgba(255, 255, 255, 0.12); }
+.gnotch-cal-day.other-month { color: rgba(255, 255, 255, 0.3); }
+.gnotch-cal-day.has-events { font-weight: bold; text-decoration: underline; }
+.gnotch-cal-day.today { color: #ff453a; font-weight: bold; }
+.gnotch-cal-day:selected { background-color: #ff453a; color: #fff; }
+.gnotch-cal-events { spacing: 8px; }
+.gnotch-event {
+    spacing: 10px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background-color: rgba(255, 255, 255, 0.06);
+    border-left: 3px solid #0a84ff;
+}
+.gnotch-event-time { font-size: 9pt; color: rgba(255, 255, 255, 0.6); width: 56px; }
