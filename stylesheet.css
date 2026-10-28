@@ -166,16 +166,17 @@
 .gnotch-row.done .gnotch-todo-text { text-decoration: line-through; }
 
 /* ---- media ---- */
-.gnotch-media { spacing: 6px; }
-.gnotch-media-top { spacing: 12px; }
-.gnotch-media-art-button { border-radius: 14px; }
+.gnotch-media { spacing: 14px; }
+.gnotch-media-side { spacing: 10px; }
+.gnotch-media-top { spacing: 10px; }
+.gnotch-media-art-button { border-radius: 16px; }
 .gnotch-media-info { spacing: 1px; }
 .gnotch-media-app { font-size: 8pt; color: rgba(255, 255, 255, 0.45); text-transform: uppercase; }
 .gnotch-media-title { font-weight: bold; font-size: 12pt; }
 .gnotch-media-artist { color: rgba(255, 255, 255, 0.65); font-size: 9.5pt; }
 .gnotch-eq-large { spacing: 3px; height: 26px; }
 .gnotch-eq-large .gnotch-eq-bar { width: 4px; }
-.gnotch-media-controls { spacing: 18px; }
+.gnotch-media-controls { spacing: 14px; }
 .gnotch-media-button {
     border-radius: 99px;
     padding: 9px;

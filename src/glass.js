@@ -74,6 +74,7 @@ export class Glass {
                 this._rounded.update();
             }, this);
             this._place();
+            console.log('gnotch: frosted glass rendered by Blur my Shell');
         } catch (e) {
             console.warn(`gnotch: Blur my Shell glass unavailable: ${e.message}`);
             this._teardown();

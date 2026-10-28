@@ -99,6 +99,14 @@ export class NetworkWidget {
             y_expand: true,
             hscrollbar_policy: St.PolicyType.NEVER,
         }));
+        // On logout Shell destroys the UI without disabling extensions
+        this.page.connect('destroy', () => this._cancelListUpdate());
+    }
+
+    _cancelListUpdate() {
+        if (this._listTimeout)
+            GLib.source_remove(this._listTimeout);
+        this._listTimeout = 0;
     }
 
     onShown() {
@@ -404,9 +412,7 @@ export class NetworkWidget {
 
     destroy() {
         this._cancellable.cancel();
-        if (this._listTimeout)
-            GLib.source_remove(this._listTimeout);
-        this._listTimeout = 0;
+        this._cancelListUpdate();
         this._ap?.disconnectObject(this);
         this._device?.disconnectObject(this);
         this._client?.disconnectObject(this);

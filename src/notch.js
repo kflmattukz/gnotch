@@ -29,8 +29,9 @@ const EXPANDED_HEIGHT = 284;
 const HOVER_BULGE = [14, 4];
 const EAR = 10; // concave "shoulders" joining the screen edge
 const TAB_HOVER_DWELL_MS = 70;
-// Black tint left over the frosted glass when fully expanded
-const GLASS_TINT = 0.38;
+// Black tint left over the frosted glass when fully expanded. Blur my Shell's
+// top bar has none, so keep it light enough for the glass to read the same
+const GLASS_TINT = 0.12;
 const GLASS_IN = {stiffness: 170, damping: 26};  // ζ≈1, slow dissolve into glass
 const GLASS_OUT = {stiffness: 420, damping: 41}; // back to solid black quickly
 

@@ -479,12 +479,14 @@ export class Marquee {
 
         const overflow = natural - available;
         const duration = Math.round(overflow / MARQUEE_SPEED * 1000);
-        const loop = () => label.ease({
+        // Unmapped actors finish eases instantly, which would recurse forever;
+        // notify::mapped restarts the loop when the label is shown again
+        const loop = () => label.mapped && label.ease({
             translation_x: -overflow,
             delay: MARQUEE_PAUSE_MS,
             duration,
             mode: EASE_IN_OUT_SINE,
-            onComplete: () => label.ease({
+            onComplete: () => label.mapped && label.ease({
                 translation_x: 0,
                 delay: MARQUEE_PAUSE_MS,
                 duration,

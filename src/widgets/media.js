@@ -19,12 +19,26 @@ const MPRIS_PATH = '/org/mpris/MediaPlayer2';
 const EQ_BARS = 4;
 const COMPACT_WIDTH = 340; // room for the scrolling title between art and equalizer
 // Concentric corners: notch radius minus the padding around the art
-const ART_SIZE = 64;
-const ART_RADIUS = 14;
+const ART_SIZE = 112;
+const ART_RADIUS = 16;
 const MINI_ART_RADIUS = 6;
 const EQ_TICK_MS = 170;
 // Middle bars swing higher, like a real spectrum
 const EQ_RANGE = [[3, 10], [5, 16], [4, 14], [3, 9]];
+
+/**
+ * Flatpak apps (e.g. Chrome) report art in their private /tmp, which the host
+ * sees at $XDG_RUNTIME_DIR/.flatpak/<app-id>/tmp.
+ */
+function sandboxedArtUrl(url, appId) {
+    if (!appId || !url.startsWith('file:///tmp/'))
+        return url;
+    const file = Gio.File.new_for_uri(url);
+    if (file.query_exists(null))
+        return url;
+    const path = GLib.build_filenamev([GLib.get_user_runtime_dir(), '.flatpak', appId, file.get_path()]);
+    return GLib.file_test(path, GLib.FileTest.EXISTS) ? GLib.filename_to_uri(path, null) : url;
+}
 
 class Player {
     constructor(busName, onChanged) {
@@ -101,6 +115,7 @@ class Player {
         this.identity = this._mpris?.Identity ?? '';
 
         const entry = this._mpris?.DesktopEntry;
+        this.artUrl = sandboxedArtUrl(this.artUrl, entry);
         this.app = entry
             ? Shell.AppSystem.get_default().lookup_app(`${entry}.desktop`)
             : null;
@@ -161,12 +176,14 @@ export class MediaWidget {
     }
 
     _buildPage() {
-        // Card: [art | title/artist | waveform] on top, centered transport controls below
-        this.page = new St.BoxLayout({
-            style_class: 'gnotch-media',
+        // Card: big art on the left; [title/artist | waveform] above the controls on the right
+        this.page = new St.BoxLayout({style_class: 'gnotch-media'});
+        const right = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'gnotch-media-side',
         });
-
         const top = new St.BoxLayout({style_class: 'gnotch-media-top'});
         // button (hover/press motion) > frame (paused dimming) > art (track swaps)
         this._art = new Cover({size: ART_SIZE, radius: ART_RADIUS});
@@ -175,7 +192,8 @@ export class MediaWidget {
         const artButton = new St.Button({child: this._artFrame, style_class: 'gnotch-media-art-button'});
         Anim.addButtonMotion(artButton, {hover: 1.04, press: 0.94});
         artButton.connect('clicked', () => this._active?.raise());
-        top.add_child(artButton);
+        artButton.y_align = Clutter.ActorAlign.CENTER;
+        this.page.add_child(artButton);
 
         const info = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
@@ -201,13 +219,11 @@ export class MediaWidget {
             this._eqBars.push(bar);
         }
         top.add_child(wave);
-        this.page.add_child(top);
+        right.add_child(top);
 
         const controls = new St.BoxLayout({
             style_class: 'gnotch-media-controls',
-            x_align: Clutter.ActorAlign.CENTER,
-            y_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
+            x_align: Clutter.ActorAlign.START,
         });
         this._prev = this._makeControl('media-skip-backward-symbolic', () => {
             this._skipDirection = -1;
@@ -225,7 +241,8 @@ export class MediaWidget {
         controls.add_child(this._prev);
         controls.add_child(this._playPause);
         controls.add_child(this._next);
-        this.page.add_child(controls);
+        right.add_child(controls);
+        this.page.add_child(right);
 
         this.page.connect('notify::mapped', () => this._syncEqualizer());
         this._sync();
