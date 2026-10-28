@@ -26,18 +26,43 @@ const EQ_TICK_MS = 170;
 // Middle bars swing higher, like a real spectrum
 const EQ_RANGE = [[3, 10], [5, 16], [4, 14], [3, 9]];
 
+const THUMBNAIL_SIZES = ['x-large', 'large', 'normal'];
+
 /**
- * Flatpak apps (e.g. Chrome) report art in their private /tmp, which the host
- * sees at $XDG_RUNTIME_DIR/.flatpak/<app-id>/tmp.
+ * Makes art URLs loadable from the host:
+ * - Flatpak apps (e.g. Chrome) write art to their private /tmp, which the host
+ *   sees at $XDG_RUNTIME_DIR/.flatpak/<app-id>/tmp. Not every app reports its
+ *   id, so every sandbox is checked.
+ * - Players often send no art for local videos (e.g. mpv); use the file
+ *   manager's cached thumbnail when there is one.
  */
-function sandboxedArtUrl(url, appId) {
-    if (!appId || !url.startsWith('file:///tmp/'))
-        return url;
-    const file = Gio.File.new_for_uri(url);
-    if (file.query_exists(null))
-        return url;
-    const path = GLib.build_filenamev([GLib.get_user_runtime_dir(), '.flatpak', appId, file.get_path()]);
-    return GLib.file_test(path, GLib.FileTest.EXISTS) ? GLib.filename_to_uri(path, null) : url;
+function resolveArtUrl(artUrl, mediaUrl) {
+    if (artUrl.startsWith('file:///tmp/')) {
+        const path = Gio.File.new_for_uri(artUrl).get_path();
+        if (GLib.file_test(path, GLib.FileTest.EXISTS))
+            return artUrl;
+        const sandboxes = GLib.build_filenamev([GLib.get_user_runtime_dir(), '.flatpak']);
+        try {
+            const dir = GLib.Dir.open(sandboxes, 0);
+            for (let name; (name = dir.read_name()) !== null;) {
+                const candidate = GLib.build_filenamev([sandboxes, name, path]);
+                if (GLib.file_test(candidate, GLib.FileTest.EXISTS))
+                    return GLib.filename_to_uri(candidate, null);
+            }
+        } catch {
+            // no Flatpak runtime dir
+        }
+        return artUrl;
+    }
+    if (!artUrl && typeof mediaUrl === 'string' && mediaUrl.startsWith('file://')) {
+        const hash = GLib.compute_checksum_for_string(GLib.ChecksumType.MD5, mediaUrl, -1);
+        for (const size of THUMBNAIL_SIZES) {
+            const thumb = GLib.build_filenamev([GLib.get_user_cache_dir(), 'thumbnails', size, `${hash}.png`]);
+            if (GLib.file_test(thumb, GLib.FileTest.EXISTS))
+                return GLib.filename_to_uri(thumb, null);
+        }
+    }
+    return artUrl;
 }
 
 class Player {
@@ -114,8 +139,8 @@ class Player {
         this.artUrl = typeof metadata['mpris:artUrl'] === 'string' ? metadata['mpris:artUrl'] : '';
         this.identity = this._mpris?.Identity ?? '';
 
+        this.artUrl = resolveArtUrl(this.artUrl, metadata['xesam:url']);
         const entry = this._mpris?.DesktopEntry;
-        this.artUrl = sandboxedArtUrl(this.artUrl, entry);
         this.app = entry
             ? Shell.AppSystem.get_default().lookup_app(`${entry}.desktop`)
             : null;

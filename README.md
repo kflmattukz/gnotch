@@ -17,7 +17,7 @@ The notch peeks when a track changes, the charger is plugged in or unplugged, th
 
 Motion: the notch shape is driven by spring physics (`src/anim.js`), so interrupted transitions keep their momentum. Tabs switch on hover with a stretchy indicator, and almost every change (text, icons, list rows, album art) has a small transition. Animations follow GNOME's *Reduce animation* setting.
 
-Glass: the compact notch is solid black; expanded, it turns into frosted glass rendered by [Blur my Shell](https://extensions.gnome.org/extension/3193/blur-my-shell/) itself (its top bar pipeline and corner shader, through `global.blur_my_shell`), so it matches the top bar exactly. Without Blur my Shell the notch stays black.
+Glass: the compact notch is solid black; expanded, it turns into frosted glass rendered by [Blur my Shell](https://extensions.gnome.org/extension/3193/blur-my-shell/) itself (its dynamic pipeline with the top bar's blur settings, through `global.blur_my_shell`), blurring whatever is behind the notch. Without Blur my Shell the notch stays black.
 
 OSD: volume, brightness and keyboard backlight changes show in the notch with a level meter instead of the Shell popup (the Shell popup is still used while the notch is expanded).
 

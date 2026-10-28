@@ -85,6 +85,8 @@ export class TodoWidget {
         }
         if (!this._list)
             return; // destroyed meanwhile
+        // Open tasks first, finished ones at the bottom (stable within each group)
+        this._todos = [...this._todos.filter(t => !t.done), ...this._todos.filter(t => t.done)];
         for (const todo of this._todos)
             this._addRow(todo, false);
         this._syncSummary();
@@ -123,7 +125,32 @@ export class TodoWidget {
         // Finished tasks recede; reopened ones come back with a nudge
         label.ease({opacity: todo.done ? 120 : 255, duration: 320, mode: EASE_OUT_QUINT});
         Anim.nudge(label, {dx: todo.done ? 6 : -6});
+        this._moveToGroup(todo);
         this._changed();
+    }
+
+    /** Done tasks sink to the bottom; reopened ones rise to the end of the open group. */
+    _moveToGroup(todo) {
+        const oldIndex = this._todos.indexOf(todo);
+        const rest = this._todos.filter(t => t !== todo);
+        const newIndex = todo.done ? rest.length : rest.filter(t => !t.done).length;
+        rest.splice(newIndex, 0, todo);
+        this._todos = rest;
+        if (newIndex === oldIndex)
+            return;
+
+        // FLIP: reorder now, then slide every affected row from where it was
+        const rows = this._todos.map(t => this._rows.get(t).row);
+        const moved = this._rows.get(todo).row;
+        const step = moved.height + this._list.layout_manager.spacing;
+        const [from, to] = [Math.min(oldIndex, newIndex), Math.max(oldIndex, newIndex)];
+        this._list.set_child_at_index(moved, newIndex);
+        rows.forEach((row, i) => {
+            if (i < from || i > to)
+                return;
+            row.translation_y = row === moved ? (oldIndex - newIndex) * step : (newIndex > oldIndex ? step : -step);
+            row.ease({translation_y: 0, duration: 420, mode: EASE_OUT_QUINT});
+        });
     }
 
     _remove(todo, delay = 0) {
@@ -178,11 +205,18 @@ export class TodoWidget {
         const label = new St.Label({
             text: todo.text,
             style_class: 'gnotch-todo-text',
-            x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
             opacity: todo.done ? 120 : 255,
         });
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        // Clicking the task text toggles it too
+        const labelButton = new St.Button({
+            style_class: 'gnotch-todo-label',
+            x_expand: true,
+            x_align: Clutter.ActorAlign.FILL,
+            child: label,
+        });
+        labelButton.connect('clicked', () => this._toggle(todo));
 
         // The delete button only appears while hovering the row
         const remove = new St.Button({
@@ -205,7 +239,7 @@ export class TodoWidget {
         remove.translation_x = 6;
 
         row.add_child(check);
-        row.add_child(label);
+        row.add_child(labelButton);
         row.add_child(remove);
         this._list.add_child(row);
         this._rows.set(todo, {row, check, label});

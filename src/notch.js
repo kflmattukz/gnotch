@@ -858,8 +858,8 @@ export class Notch {
 
         // Black dissolves into frosted glass; the shoulders melt away with it
         const glass = Math.min(1, Math.max(0, g));
+        this._glass.radius = radius;
         this._glass.progress = glass;
-        this._glass.update(x, monitor.y, width, height, radius);
         const alpha = (1 - glass * (1 - GLASS_TINT)).toFixed(3);
         const tintStyle = `border-radius: 0 0 ${radius}px ${radius}px; background-color: rgba(0, 0, 0, ${alpha});`;
         if (tintStyle !== this._tintStyle) {

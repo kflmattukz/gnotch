@@ -45,11 +45,14 @@ export class NotificationsWidget {
     }
 
     _watchSource(source) {
+        // Notifications that arrived before the notch started, oldest first so newest ends on top
+        for (const notification of source.notifications ?? [])
+            this._onNotification(source, notification, false);
         source.connectObject('notification-added', (src, notification) =>
-            this._onNotification(src, notification), this);
+            this._onNotification(src, notification, true), this);
     }
 
-    _onNotification(source, notification) {
+    _onNotification(source, notification, isNew) {
         if (this._items.some(i => i.notification === notification))
             return;
         const row = this._makeRow(source, notification);
@@ -66,7 +69,7 @@ export class NotificationsWidget {
         }
         this._sync();
 
-        if (this._desktopSettings.get_boolean('show-banners')) {
+        if (isNew && this._desktopSettings.get_boolean('show-banners')) {
             this._notch.peek({
                 gicon: notification.gicon ?? source.icon,
                 title: notification.title || source.title,

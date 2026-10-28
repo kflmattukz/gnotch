@@ -232,3 +232,8 @@
     border-left: 3px solid #0a84ff;
 }
 .gnotch-event-time { font-size: 9pt; color: rgba(255, 255, 255, 0.6); width: 56px; }
+
+/* to-do: the text is a toggle; finished tasks get a soft green tint */
+.gnotch-todo-label { padding: 0; text-align: left; }
+.gnotch-row.done { background-color: rgba(48, 209, 88, 0.12); }
+.gnotch-row.done:hover { background-color: rgba(48, 209, 88, 0.18); }
