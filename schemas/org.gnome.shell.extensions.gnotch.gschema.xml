@@ -2,7 +2,7 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.gnotch" path="/org/gnome/shell/extensions/gnotch/">
     <key name="enabled-widgets" type="as">
-      <default>['media', 'whatsapp', 'prayer', 'pomodoro', 'share', 'battery', 'network', 'calendar', 'todo', 'notifications', 'devices']</default>
+      <default>['media', 'prayer', 'pomodoro', 'battery', 'network', 'calendar', 'todo', 'notifications', 'devices']</default>
       <summary>Widgets shown in the notch</summary>
     </key>
     <key name="collapse-delay-ms" type="u">
@@ -21,6 +21,14 @@
       <default>true</default>
       <summary>Frosted glass when expanded</summary>
       <description>The compact notch stays black; the expanded one turns into blurred glass matching Blur my Shell's top bar when it is active.</description>
+    </key>
+    <key name="glow-enabled" type="b">
+      <default>true</default>
+      <summary>Glowing edge for notifications, calls, battery and volume changes</summary>
+    </key>
+    <key name="glow-hover" type="b">
+      <default>true</default>
+      <summary>Light up the edge nearest the pointer as it approaches the notch</summary>
     </key>
     <key name="hide-clock" type="b">
       <default>true</default>

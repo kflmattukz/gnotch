@@ -66,7 +66,6 @@ export class Glass {
             // The top bar may switch pipelines; follow it
             this._panelSettings.connectObject('changed::pipeline', () =>
                 this._pipeline.change_pipeline_to(this._panelSettings.get_string('pipeline')), this);
-            console.log('gnotch: frosted glass rendered by Blur my Shell');
         } catch (e) {
             console.warn(`gnotch: Blur my Shell glass unavailable: ${e.message}`);
             this._teardown();

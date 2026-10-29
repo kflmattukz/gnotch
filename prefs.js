@@ -1,16 +1,17 @@
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 const WIDGETS = [
     ['media', 'Media', 'Music and video playing in any app'],
-    ['whatsapp', 'WhatsApp', 'Messages and calls from WhatsApp Web in Chrome'],
+    ['whatsapp', 'Web chat calls', 'Messages and calls from WhatsApp Web in Google Chrome. Reads microphone loudness during calls for the voice waves (never recorded)'],
     ['prayer', 'Prayer times', 'Daily prayer times with reminders'],
     ['pomodoro', 'Pomodoro', 'Focus timer with breaks'],
-    ['share', 'Share', 'Send and receive files with LocalSend, using the LocalSend app\'s device name (keep the app closed)'],
+    ['share', 'Share', 'Send and receive files with LocalSend-compatible devices. Runs a file server on your network (port 53317); keep the LocalSend app closed'],
     ['battery', 'Battery', 'Charge level, charging state and low-battery alerts'],
     ['network', 'Wi-Fi and Bluetooth', 'Quick toggles and connected devices'],
     ['calendar', 'Calendar', 'Month view and events from your online accounts'],
@@ -137,6 +138,20 @@ export default class GnotchPreferences extends ExtensionPreferences {
         settings.bind('glass-expanded', glass, 'active', Gio.SettingsBindFlags.DEFAULT);
         behavior.add(glass);
 
+        const glow = new Adw.SwitchRow({
+            title: 'Glowing edge',
+            subtitle: 'A line of light runs around the notch for notifications, calls, battery and volume',
+        });
+        settings.bind('glow-enabled', glow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        behavior.add(glow);
+        const glowHover = new Adw.SwitchRow({
+            title: 'Glow near the pointer',
+            subtitle: 'The edge closest to the pointer lights up as it approaches',
+        });
+        settings.bind('glow-hover', glowHover, 'active', Gio.SettingsBindFlags.DEFAULT);
+        glow.bind_property('active', glowHover, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        behavior.add(glowHover);
+
         const spins = [
             ['collapse-delay-ms', 'Collapse delay', 'Milliseconds before collapsing after the pointer leaves', 0, 3000, 50],
             ['peek-duration-ms', 'Peek duration', 'How long track changes and alerts stay visible', 500, 10000, 250],
@@ -197,8 +212,8 @@ export default class GnotchPreferences extends ExtensionPreferences {
             'Minutes before each prayer (0 turns it off)', 0, 60, 1));
 
         const whatsapp = new Adw.PreferencesGroup({
-            title: 'WhatsApp',
-            description: 'Load the chrome-extension folder from the Gnotch sources in Chrome (chrome://extensions, Developer mode, Load unpacked) and accept the pairing prompt in the notch. It lets the notch hang up calls. The token below is only needed to pair by hand.',
+            title: 'Web chat calls',
+            description: 'Works with WhatsApp Web in Google Chrome. Load the chrome-extension folder from the Gnotch sources in Chrome (chrome://extensions, Developer mode, Load unpacked) and accept the pairing prompt in the notch. It lets the notch hang up calls. The token below is only needed to pair by hand.',
         });
         page.add(whatsapp);
         const token = new Adw.ActionRow({

@@ -1,3 +1,4 @@
+#!@GJS@ -m
 // Gnotch's file chooser helper for the Share tab's "Add files…" button.
 // GNOME Shell can't show a GTK file dialog itself, so this small GTK app
 // does and reports the chosen files on stdout.

@@ -11,6 +11,7 @@ import {BarLevel} from 'resource:///org/gnome/shell/ui/barLevel.js';
 import * as Anim from './anim.js';
 import {Cover} from './cover.js';
 import {Glass} from './glass.js';
+import {Glow, rgb} from './glow.js';
 import {MediaWidget} from './widgets/media.js';
 import {BatteryWidget} from './widgets/battery.js';
 import {NetworkWidget} from './widgets/network.js';
@@ -108,6 +109,9 @@ export class Notch {
         this.actor.add_child(this._earLeft);
         this.actor.add_child(this._earRight);
         this.actor.add_child(this._pill);
+        // The glowing edge goes on top: its halo spreads outside the pill
+        this._glow = new Glow();
+        this.actor.add_child(this._glow.actor);
 
         this._shape = new Anim.Spring(this._pill,
             {w: IDLE_WIDTH, h: COMPACT_HEIGHT, g: 0},
@@ -152,8 +156,14 @@ export class Notch {
         this._settings.connectObject(
             'changed::hide-clock', () => this._syncClock(),
             'changed::glass-expanded', () => this._syncGlass(),
+            'changed::glow-enabled', () => this._syncGlow(),
+            'changed::glow-hover', () => this._syncGlow(),
             this);
         this._syncClock();
+        this._syncGlow();
+        // The edge lights up as the pointer approaches, anywhere on screen
+        global.backend.get_cursor_tracker().connectObject('position-invalidated',
+            () => this._queuePointer(), this);
 
         this._hookOsd();
         this._hookDnd();
@@ -639,6 +649,8 @@ export class Notch {
     _updatePeek(p) {
         const old = this._currentPeek;
         this._currentPeek = p;
+        if ((p.glow ?? 'sweep') !== (old?.glow ?? 'sweep') || p.glow === 'flash')
+            this._playGlow(p);
         if (p.gicon)
             Anim.swapIcon(this._peekIcon, {gicon: p.gicon});
         else if (p.iconName && p.iconName !== old?.iconName)
@@ -722,6 +734,7 @@ export class Notch {
             body: label && label !== title ? label : '',
             level: hasLevel ? level / (maxLevel > 0 ? maxLevel : 1) : undefined,
             duration: OSD_DURATION_MS,
+            glow: 'flash', // these come in bursts: no sweep each time
         });
     }
 
@@ -829,6 +842,7 @@ export class Notch {
         }
 
         this._currentPeek = p;
+        this._playGlow(p);
         const fill = () => {
             // Album art gets a rounded cover; everything else an icon
             this._peekVisual = p.cover ? this._peekCover.actor : this._peekIcon;
@@ -917,6 +931,9 @@ export class Notch {
         if (old === state)
             return;
         this._state = state;
+
+        if (old === 'peek')
+            this._glow.release();
 
         // Outgoing content leaves quickly so the shape change reads clearly
         switch (old) {
@@ -1025,6 +1042,9 @@ export class Notch {
 
         const radius = cornerRadius(height);
         this._radius = radius;
+        this._pillOrigin = [x, monitor.y];
+        this._glow.setShape({x: EAR, width, height, radius});
+        this._queuePointer();
 
         // Black dissolves into frosted glass; the shoulders melt away with it
         const glass = Math.min(1, Math.max(0, g));
@@ -1039,6 +1059,37 @@ export class Notch {
         const earOpacity = Math.round(255 * (1 - glass));
         this._earLeft.opacity = earOpacity;
         this._earRight.opacity = earOpacity;
+    }
+
+    // ---- glow ----
+
+    _syncGlow() {
+        this._glow.enabled = this._settings.get_boolean('glow-enabled');
+        this._glow.hoverEnabled = this._glow.enabled && this._settings.get_boolean('glow-hover');
+        if (!this._glow.enabled)
+            this._glow.release();
+        this._queuePointer();
+    }
+
+    /** Plays a peek's glow: p.glow is sweep (default), loop, pulse, flash, hold or false. */
+    _playGlow(p) {
+        const kind = p.glow ?? 'sweep';
+        if (kind === false)
+            this._glow.release();
+        else
+            this._glow.play(kind, p.glowColor ? rgb(p.glowColor) : null);
+    }
+
+    /** Hands the pointer to the glow, at most once per frame. */
+    _queuePointer() {
+        if (this._pointerLaterId || !this._pillOrigin)
+            return;
+        this._pointerLaterId = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
+            this._pointerLaterId = 0;
+            const [px, py] = global.get_pointer();
+            this._glow.setPointer(px - this._pillOrigin[0], py - this._pillOrigin[1]);
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _syncClock() {
@@ -1091,6 +1142,11 @@ export class Notch {
         }
 
         this._unhookOsd();
+        global.backend.get_cursor_tracker().disconnectObject(this);
+        if (this._pointerLaterId)
+            global.compositor.get_laters().remove(this._pointerLaterId);
+        this._pointerLaterId = 0;
+        this._glow.destroy();
         Main.xdndHandler.disconnectObject(this);
         global.backend.get_dnd().disconnectObject(this);
         this._shape.destroy();

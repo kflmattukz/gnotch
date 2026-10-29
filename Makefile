@@ -1,4 +1,4 @@
-UUID = gnotch@mattukz
+UUID = gnotch@kflmattukz.github.io
 DEST = $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 FILES = metadata.json extension.js prefs.js stylesheet.css src schemas helper
 
@@ -21,7 +21,7 @@ uninstall:
 	rm -rf $(DEST)
 
 zip: schemas
-	gnome-extensions pack --force --extra-source=src --extra-source=helper --schema=schemas/org.gnome.shell.extensions.gnotch.gschema.xml .
+	gnome-extensions pack --force --extra-source=src --extra-source=helper --extra-source=LICENSE --schema=schemas/org.gnome.shell.extensions.gnotch.gschema.xml .
 
 # Nested GNOME Shell for testing on Wayland without logging out
 nested:

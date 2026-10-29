@@ -121,6 +121,8 @@ export class BatteryWidget {
                 gicon,
                 title: charging ? 'Charging' : 'On battery',
                 body: `${percent}% · ${detail}`,
+                // GNOME's success green, as the charging icon
+                glowColor: charging ? '#2ec27e' : null,
             });
         }
         this._lastState = charging;
@@ -131,7 +133,7 @@ export class BatteryWidget {
             const level = LOW_LEVELS.findLast(l => percent <= l);
             if (level !== undefined && level < this._lastLowLevel) {
                 this._lastLowLevel = level;
-                this._notch.peek({gicon, title: 'Battery low', body: `${percent}% remaining`});
+                this._notch.peek({gicon, title: 'Battery low', body: `${percent}% remaining`, glowColor: '#f66151'});
             }
         }
 

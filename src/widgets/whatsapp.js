@@ -32,6 +32,9 @@ const ANSWERED_PEEK_MS = 4000;
 const CALL_CONTEXT_MS = 90000;
 const CONNECT_TIMEOUT_MS = 10000; // accepted but no call audio: say it's in Chrome
 const ENDED_PEEK_MS = 3000;
+// Glow colours, as in the stylesheet: calls are green, missed calls red
+const CALL_GLOW = '#57e389';
+const MISSED_GLOW = '#f66151';
 const NOTE_MS = 5000; // a hang-up hint replaces the timer this long
 const IN_CALL_KEY = 'wa-in-call';
 const PAIR_KEY = 'wa-pair';
@@ -96,6 +99,7 @@ export class WhatsAppWidget {
         this._notch = notch;
         this._unread = new Map(); // sender -> count since the last peek ended
         this._ringing = new Set(); // incoming-call notifications we watch
+        this._timers = new Set(); // one-shot timeouts, removed on destroy
         this._avatarDir = Gio.File.new_for_path(GLib.build_filenamev(AVATAR_DIR));
         this._expecting = null; // the call that rang: {sender, cover, video, until}
         this._call = null; // the call in progress
@@ -103,8 +107,6 @@ export class WhatsAppWidget {
         // The Chrome extension presses WhatsApp's own buttons (hang up...)
         this._bridge = new WhatsAppBridge(notch.settings);
         this._bridge.connectObject(
-            'connected-changed', (_b, connected) =>
-                console.log(`gnotch: WhatsApp Chrome extension ${connected ? 'connected' : 'disconnected'}`),
             'pair-request', (_b, request) => this._askToPair(request),
             'pair-cancelled', () => this._notch.endPeek(PAIR_KEY),
             'event', (_b, event) => this._onExtensionEvent(event),
@@ -131,6 +133,16 @@ export class WhatsAppWidget {
         for (const source of Main.messageTray.getSources())
             this._watchSource(source);
         Main.messageTray.connectObject('source-added', (_t, source) => this._watchSource(source), this);
+    }
+
+    /** Runs callback once after ms; destroy() removes it if still pending. */
+    _after(ms, callback) {
+        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+            this._timers.delete(id);
+            callback();
+            return GLib.SOURCE_REMOVE;
+        });
+        this._timers.add(id);
     }
 
     /** The notifications widget leaves these to us (no double peek). */
@@ -166,6 +178,7 @@ export class WhatsAppWidget {
                 key: `wa-call:${wa.sender}`,
                 cover,
                 iconName: 'call-missed-symbolic',
+                glowColor: MISSED_GLOW,
                 title: wa.sender,
                 body: wa.text,
                 actions: [this._openAction(notification)],
@@ -190,10 +203,9 @@ export class WhatsAppWidget {
             actions: [this._openAction(notification, key)],
         });
         // Count again from one once this burst of messages has been seen
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, MESSAGE_PEEK_MS, () => {
+        this._after(MESSAGE_PEEK_MS, () => {
             if (this._unread.get(wa.sender) === count)
                 this._unread.delete(wa.sender);
-            return GLib.SOURCE_REMOVE;
         });
     }
 
@@ -209,6 +221,8 @@ export class WhatsAppWidget {
             sticky: true,
             cover,
             iconName: 'call-incoming-symbolic',
+            glow: 'loop', // a line keeps circling while it rings
+            glowColor: CALL_GLOW,
             title: wa.sender,
             body: `Incoming ${kind}`,
             actions: [
@@ -227,12 +241,13 @@ export class WhatsAppWidget {
                         iconName: 'call-start-symbolic',
                         title: wa.sender,
                         body: 'Connecting…',
+                        glow: 'loop',
+                        glowColor: CALL_GLOW,
                         actions: [],
                     });
-                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, CONNECT_TIMEOUT_MS, () => {
+                    this._after(CONNECT_TIMEOUT_MS, () => {
                         if (!this._call && this._answering === key) {
                             // No call audio showed up: don't leave "Connecting…" behind
-                            console.log('gnotch: WhatsApp call accepted but no call audio from Chrome');
                             this._answering = null;
                             const answered = {
                                 key,
@@ -240,13 +255,14 @@ export class WhatsAppWidget {
                                 iconName: 'call-start-symbolic',
                                 title: wa.sender,
                                 body: `${kind[0].toUpperCase()}${kind.slice(1)} answered in Chrome`,
+                                glow: 'hold',
+                                glowColor: CALL_GLOW,
                                 duration: ANSWERED_PEEK_MS,
                                 actions: [],
                             };
                             if (!this._notch.updatePeek(answered))
                                 this._notch.endPeek(key);
                         }
-                        return GLib.SOURCE_REMOVE;
                     });
                     if (this._audio.active)
                         this._onCallAudio(true);
@@ -259,10 +275,7 @@ export class WhatsAppWidget {
             this._ringing.delete(notification);
             this._endRinging(key);
         }, this);
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, CALL_TIMEOUT_MS, () => {
-            this._endRinging(key);
-            return GLib.SOURCE_REMOVE;
-        });
+        this._after(CALL_TIMEOUT_MS, () => this._endRinging(key));
     }
 
     /** Ends the call peek only while it still asks to accept (not once answered). */
@@ -305,8 +318,6 @@ export class WhatsAppWidget {
     }
 
     _onExtensionEvent(event) {
-        if (event.type === 'call')
-            console.log(`gnotch: WhatsApp call screen ${event.state}`);
         // The extension sees the call screen itself: the most reliable end signal
         if (event.type === 'call' && event.state === 'ended' && this._call)
             this._endCall();
@@ -315,7 +326,6 @@ export class WhatsAppWidget {
     // ---- in a call ----
 
     _onCallAudio(active) {
-        console.log(`gnotch: Chrome call audio ${active ? 'started' : 'stopped'}${this._call ? ' (in call)' : ''}`);
         if (active && !this._call && this._expecting && Date.now() < this._expecting.until)
             this._startCall(this._expecting);
         else if (!active && this._call)
@@ -364,6 +374,8 @@ export class WhatsAppWidget {
             iconName: 'call-start-symbolic',
             title: call.sender,
             body: call.note ?? `${call.video ? 'Video call' : 'In call'} · ${this._elapsed()}`,
+            glow: 'pulse',
+            glowColor: CALL_GLOW,
             extra: call.waves,
             actions: call.actions,
         };
@@ -387,12 +399,11 @@ export class WhatsAppWidget {
             return;
         this._call.note = text;
         this._syncCall();
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, NOTE_MS, () => {
+        this._after(NOTE_MS, () => {
             if (this._call?.note === text) {
                 this._call.note = null;
                 this._syncCall();
             }
-            return GLib.SOURCE_REMOVE;
         });
     }
 
@@ -413,7 +424,6 @@ export class WhatsAppWidget {
 
     _endCall() {
         const call = this._call;
-        console.log(`gnotch: WhatsApp call with ${call.sender} ended after ${this._elapsed()}`);
         GLib.source_remove(call.timerId);
         const duration = this._elapsed();
         this._call = null;
@@ -426,6 +436,7 @@ export class WhatsAppWidget {
             iconName: 'call-stop-symbolic',
             title: call.sender,
             body: `Call ended · ${duration}`,
+            glow: false,
             duration: ENDED_PEEK_MS,
         });
         call.theirs.destroy();
@@ -492,6 +503,8 @@ export class WhatsAppWidget {
     }
 
     destroy() {
+        this._timers.forEach(id => GLib.source_remove(id));
+        this._timers.clear();
         Main.messageTray.disconnectObject(this);
         for (const source of Main.messageTray.getSources())
             source.disconnectObject(this);

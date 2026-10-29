@@ -1,9 +1,9 @@
 {
-  "uuid": "gnotch@mattukz",
+  "uuid": "gnotch@kflmattukz.github.io",
   "name": "Gnotch",
-  "description": "A dynamic notch at the top of the screen: media, battery, notifications, calendar, to-dos, drives, Wi-Fi and Bluetooth.",
+  "description": "A dynamic notch at the top of the screen. It shows the time, the music that's playing and the battery, peeks for notifications and volume or brightness changes, and opens into tabs: media, Wi-Fi and Bluetooth, calendar, to-dos, notifications, drives, prayer times and a Pomodoro timer.\n\nOptional, off by default (turn on in preferences):\n- Share: send and receive files with LocalSend-compatible devices on your network. It runs a file server on port 53317 and uses the LocalSend app's own device name and certificate when that app is installed.\n- Web chat calls: messages and calls from WhatsApp Web in Google Chrome. During a call it reads microphone and call loudness (never recorded) to animate voice waves, and a local-only server lets an optional companion Chrome extension hang up.\n\nThe Share and chat features can copy received text to the clipboard when you press Copy.",
   "shell-version": ["50"],
   "settings-schema": "org.gnome.shell.extensions.gnotch",
-  "url": "",
-  "version-name": "0.1"
+  "url": "https://github.com/kflmattukz/gnotch",
+  "version-name": "0.2"
 }
