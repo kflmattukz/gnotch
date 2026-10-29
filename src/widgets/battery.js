@@ -1,10 +1,11 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
-import Pango from 'gi://Pango';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 import UPower from 'gi://UPowerGlib';
 
 import {loadInterfaceXML} from 'resource:///org/gnome/shell/misc/fileUtils.js';
+import {QuickToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
 import * as Anim from '../anim.js';
 
@@ -32,36 +33,13 @@ export class BatteryWidget {
         this.compactLeft = new St.Bin({child: this._iconGlow});
         this.compactRight = new St.Bin({child: this._labelGlow, y_align: Clutter.ActorAlign.CENTER});
 
-        // Home tile: icon on top, percentage + detail + level bar at the bottom
-        this._tile = new St.BoxLayout({
-            style_class: 'gnotch-tile gnotch-battery',
-            orientation: Clutter.Orientation.VERTICAL,
-            x_expand: true,
-            y_expand: true,
+        // Home tile, like Shell's own power toggle: percentage, time left, opens Power settings
+        this._tile = new QuickToggle({style_class: 'quick-toggle button gnotch-battery', visible: false});
+        this._tile.connect('clicked', () => {
+            this._notch.collapse();
+            Shell.AppSystem.get_default().lookup_app('gnome-power-panel.desktop')?.activate();
         });
         this.tiles = [this._tile];
-        this._icon = new St.Icon({style_class: 'gnotch-tile-icon', icon_size: 18, x_align: Clutter.ActorAlign.START});
-        this._percent = new St.Label({style_class: 'gnotch-tile-title'});
-        this._detail = new St.Label({style_class: 'gnotch-tile-subtitle'});
-        this._detail.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-
-        // Level bar; the fill is scaled horizontally so it can glide
-        this._level = new St.Widget({
-            style_class: 'gnotch-level',
-            layout_manager: new Clutter.BinLayout(),
-            x_expand: true,
-        });
-        this._levelFill = new St.Widget({style_class: 'gnotch-level-fill', x_expand: true, y_expand: true});
-        this._levelFill.set_pivot_point(0, 0.5);
-        this._levelFill.scale_x = 0;
-        this._level.add_child(this._levelFill);
-
-        this._tile.add_child(this._icon);
-        this._tile.add_child(new St.Widget({y_expand: true}));
-        this._tile.add_child(this._percent);
-        this._tile.add_child(this._detail);
-        this._tile.add_child(this._level);
-        this._tile.visible = false;
 
         this._proxy = new DeviceProxy(Gio.DBus.system, 'org.freedesktop.UPower',
             '/org/freedesktop/UPower/devices/DisplayDevice', (proxy, error) => {
@@ -106,12 +84,9 @@ export class BatteryWidget {
         const percent = Math.round(p.Percentage);
         const iconName = this._iconName();
         const gicon = new Gio.ThemedIcon({name: iconName});
-        Anim.swapIcon(this._icon, {gicon});
+        this._tile.set({gicon, title: `${percent} %`});
         Anim.swapIcon(this._miniIcon, {gicon});
-        Anim.swapText(this._percent, `${percent}%`);
         Anim.swapText(this._miniLabel, `${percent}%`);
-        this._percentValue = percent;
-        this._fillLevel(false);
 
         let detail;
         switch (p.State) {
@@ -127,14 +102,14 @@ export class BatteryWidget {
         default:
             detail = p.TimeToEmpty > 0 ? `${formatDuration(p.TimeToEmpty)} remaining` : 'On battery';
         }
-        Anim.swapText(this._detail, detail);
+        this._tile.subtitle = detail;
 
         const low = percent <= LOW_LEVELS[0] && !this._charging;
         const charging = this._charging;
         const state = low ? ' low' : charging ? ' charging' : '';
         this._miniLabel.style_class = `gnotch-battery-mini${state}`;
         this._miniIcon.style_class = `gnotch-battery-icon${state}`;
-        this._tile.style_class = `gnotch-tile gnotch-battery${state}`;
+        this._tile.style_class = `quick-toggle button gnotch-battery${state}`;
 
         // Charging glows gently; low battery pulses faster
         Anim.breathe(this._iconGlow, p.State === UPower.DeviceState.CHARGING, {low: 120, duration: 1300});
@@ -161,24 +136,6 @@ export class BatteryWidget {
         }
 
         this._notch.updateCompact();
-    }
-
-    /** Called when the Home tab appears: the bar fills up from empty. */
-    onShown() {
-        this._fillLevel(true);
-    }
-
-    _fillLevel(fromEmpty) {
-        if (this._percentValue === undefined)
-            return;
-        if (fromEmpty)
-            this._levelFill.scale_x = 0;
-        this._levelFill.ease({
-            scale_x: this._percentValue / 100,
-            delay: fromEmpty ? 260 : 0,
-            duration: fromEmpty ? 900 : 600,
-            mode: Clutter.AnimationMode.EASE_OUT_QUINT,
-        });
     }
 
     wantsCompact() {

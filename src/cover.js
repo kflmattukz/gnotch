@@ -7,11 +7,12 @@ import GLib from 'gi://GLib';
 import St from 'gi://St';
 
 Gio._promisify(Gio.File.prototype, 'load_contents_async');
+Gio._promisify(Gio.File.prototype, 'query_info_async');
 // The finish function of replace_contents_bytes_async is replace_contents_finish
 Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async', 'replace_contents_finish');
 
 const CACHE_DIR = GLib.build_filenamev([GLib.get_user_cache_dir(), 'gnotch', 'art']);
-const CROSSFADE_MS = 420;
+const CROSSFADE_MS = 250;
 
 /**
  * CSS images load synchronously, so remote art is downloaded to a local
@@ -29,8 +30,14 @@ async function resolveLocal(url, cancellable) {
 
     const name = GLib.compute_checksum_for_string(GLib.ChecksumType.SHA1, url, -1);
     const dest = Gio.File.new_for_path(GLib.build_filenamev([CACHE_DIR, name]));
-    if (dest.query_exists(null))
-        return dest.get_uri();
+    try {
+        await dest.query_info_async('standard::type', Gio.FileQueryInfoFlags.NONE,
+            GLib.PRIORITY_DEFAULT, cancellable);
+        return dest.get_uri(); // already cached
+    } catch (e) {
+        if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+            throw e;
+    }
 
     const [bytes] = await Gio.File.new_for_uri(url).load_contents_async(cancellable);
     GLib.mkdir_with_parents(CACHE_DIR, 0o755);
@@ -130,12 +137,12 @@ export class Cover {
             front.opacity = 0;
             return;
         }
-        // The new art settles in from a slight zoom on top of the old one
-        back.set({opacity: 0, scale_x: 1.08, scale_y: 1.08});
+        // Plain crossfade: the new art fades in on top of the old one
+        back.set({opacity: 0, scale_x: 1, scale_y: 1});
         back.ease({
-            opacity: 255, scale_x: 1, scale_y: 1,
+            opacity: 255,
             duration: CROSSFADE_MS,
-            mode: Clutter.AnimationMode.EASE_OUT_QUINT,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
         });
         front.ease({
             opacity: 0,

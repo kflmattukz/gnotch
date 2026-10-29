@@ -2,12 +2,8 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.gnotch" path="/org/gnome/shell/extensions/gnotch/">
     <key name="enabled-widgets" type="as">
-      <default>['media', 'battery', 'network', 'calendar', 'todo', 'notifications', 'devices']</default>
+      <default>['media', 'prayer', 'pomodoro', 'share', 'battery', 'network', 'calendar', 'todo', 'notifications', 'devices']</default>
       <summary>Widgets shown in the notch</summary>
-    </key>
-    <key name="expand-delay-ms" type="u">
-      <default>150</default>
-      <summary>Hover time before the notch expands</summary>
     </key>
     <key name="collapse-delay-ms" type="u">
       <default>400</default>
@@ -18,7 +14,7 @@
       <summary>How long a peek (track change, new notification...) stays visible</summary>
     </key>
     <key name="expanded-width" type="u">
-      <default>680</default>
+      <default>720</default>
       <summary>Width of the expanded notch in pixels</summary>
     </key>
     <key name="glass-expanded" type="b">
@@ -29,6 +25,51 @@
     <key name="hide-clock" type="b">
       <default>true</default>
       <summary>Hide the top bar clock (the idle notch shows the time instead)</summary>
+    </key>
+    <key name="pomodoro-focus-min" type="u">
+      <default>25</default>
+      <summary>Pomodoro focus length in minutes</summary>
+    </key>
+    <key name="pomodoro-short-min" type="u">
+      <default>5</default>
+      <summary>Pomodoro short break in minutes</summary>
+    </key>
+    <key name="pomodoro-long-min" type="u">
+      <default>15</default>
+      <summary>Pomodoro long break in minutes</summary>
+    </key>
+    <key name="pomodoro-rounds" type="u">
+      <default>4</default>
+      <summary>Focus rounds before a long break</summary>
+    </key>
+    <key name="pomodoro-auto-start" type="b">
+      <default>true</default>
+      <summary>Start the next phase automatically</summary>
+    </key>
+    <key name="prayer-latitude" type="d">
+      <default>-6.2088</default>
+      <summary>Latitude used for prayer times</summary>
+    </key>
+    <key name="prayer-longitude" type="d">
+      <default>106.8456</default>
+      <summary>Longitude used for prayer times</summary>
+    </key>
+    <key name="prayer-method" type="s">
+      <default>'kemenag'</default>
+      <summary>Prayer time calculation method</summary>
+      <description>One of kemenag, mwl, isna, egypt, makkah, karachi, jakim, diyanet</description>
+    </key>
+    <key name="prayer-asr" type="s">
+      <default>'standard'</default>
+      <summary>Asr juristic method: standard (Shafi'i) or hanafi</summary>
+    </key>
+    <key name="prayer-reminder-min" type="u">
+      <default>10</default>
+      <summary>Minutes before a prayer to show a reminder (0 = off)</summary>
+    </key>
+    <key name="prayer-offsets" type="ai">
+      <default>[0, 0, 0, 0, 0, 0]</default>
+      <summary>Minute adjustments for Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha</summary>
     </key>
   </schema>
 </schemalist>

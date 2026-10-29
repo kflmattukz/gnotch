@@ -6,7 +6,7 @@ export default class GnotchExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
         this._settings.connectObject('changed::enabled-widgets', () => this._rebuild(), this);
-        this._notch = new Notch(this._settings);
+        this._notch = new Notch(this._settings, this.path);
     }
 
     disable() {
@@ -18,6 +18,6 @@ export default class GnotchExtension extends Extension {
 
     _rebuild() {
         this._notch?.destroy();
-        this._notch = new Notch(this._settings);
+        this._notch = new Notch(this._settings, this.path);
     }
 }

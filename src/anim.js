@@ -8,15 +8,16 @@ import GLib from 'gi://GLib';
 import St from 'gi://St';
 
 const {
-    EASE_IN_QUAD, EASE_OUT_QUAD, EASE_OUT_QUINT, EASE_OUT_BACK, EASE_IN_OUT_SINE,
+    EASE_IN_QUAD, EASE_OUT_QUAD, EASE_OUT_QUINT, EASE_IN_OUT_SINE,
 } = Clutter.AnimationMode;
 
 // stiffness / damping for a unit mass; damping ratio = damping / (2 * sqrt(stiffness))
 export const Springs = {
-    BOUNCY: {stiffness: 280, damping: 22},  // ζ≈0.66, visible overshoot
-    SMOOTH: {stiffness: 300, damping: 27},  // ζ≈0.78, a hint of overshoot
+    // GNOME motion is restrained: only BOUNCY leaves a light settle
+    BOUNCY: {stiffness: 280, damping: 28},  // ζ≈0.84, light settle
+    SMOOTH: {stiffness: 300, damping: 31},  // ζ≈0.9, no visible overshoot
     SETTLE: {stiffness: 420, damping: 38},  // ζ≈0.93, lands softly
-    SNAPPY: {stiffness: 620, damping: 44},  // ζ≈0.88, quick
+    SNAPPY: {stiffness: 620, damping: 48},  // ζ≈0.96, quick
     LAZY: {stiffness: 240, damping: 30},    // ζ≈0.97, trailing motion
 };
 
@@ -139,8 +140,8 @@ function resetTransform(actor) {
 
 /** Fades an actor in from an offset/scale to rest. */
 export function fadeIn(actor, {
-    delay = 0, duration = 320, dx = 0, dy = 0, scale = 1,
-    mode = EASE_OUT_QUINT, onComplete,
+    delay = 0, duration = 250, dx = 0, dy = 0, scale = 1,
+    mode = EASE_OUT_QUAD, onComplete,
 } = {}) {
     actor.remove_transition('opacity');
     actor.show();
@@ -204,7 +205,7 @@ export function swapText(label, text, {dy = 6} = {}) {
             label.text = pendingText.get(label);
             pendingText.delete(label);
             label.translation_y = dy;
-            label.ease({opacity: 255, translation_y: 0, duration: 300, mode: EASE_OUT_QUINT});
+            label.ease({opacity: 255, translation_y: 0, duration: 250, mode: EASE_OUT_QUAD});
         },
     });
 }
@@ -237,13 +238,13 @@ export function swapIcon(icon, props) {
     icon.set_pivot_point(0.5, 0.5);
     pendingIcon.set(icon, props);
     icon.ease({
-        opacity: 0, scale_x: 0.5, scale_y: 0.5,
+        opacity: 0, scale_x: 0.85, scale_y: 0.85,
         duration: 100,
         mode: EASE_IN_QUAD,
         onComplete: () => {
             apply(pendingIcon.get(icon));
             pendingIcon.delete(icon);
-            icon.ease({opacity: 255, scale_x: 1, scale_y: 1, duration: 420, mode: EASE_OUT_BACK});
+            icon.ease({opacity: 255, scale_x: 1, scale_y: 1, duration: 250, mode: EASE_OUT_QUAD});
         },
     });
 }
@@ -274,20 +275,13 @@ export function slideSwap(actors, apply, {dx = 18, step = 25} = {}) {
                     a.ease({
                         opacity: 255, translation_x: 0,
                         delay: j * step * 1.5,
-                        duration: 420,
-                        mode: EASE_OUT_QUINT,
+                        duration: 250,
+                        mode: EASE_OUT_QUAD,
                     });
                 });
             },
         });
     });
-}
-
-/** Scales from small to full size with an overshoot. */
-export function pop(actor, {from = 0.6, delay = 0, duration = 460} = {}) {
-    actor.set_pivot_point(0.5, 0.5);
-    actor.set({scale_x: from, scale_y: from});
-    actor.ease({scale_x: 1, scale_y: 1, delay, duration, mode: EASE_OUT_BACK});
 }
 
 /** Shake left-right, e.g. to reject empty input. */
@@ -304,34 +298,6 @@ export function shake(actor) {
         });
     };
     next(0);
-}
-
-/** Quick directional nudge that springs back, e.g. on skip. */
-export function nudge(actor, {dx = 0, dy = 0} = {}) {
-    actor.ease({
-        translation_x: dx, translation_y: dy,
-        duration: 90,
-        mode: EASE_OUT_QUAD,
-        onComplete: () => actor.ease({
-            translation_x: 0, translation_y: 0, duration: 420, mode: EASE_OUT_BACK,
-        }),
-    });
-}
-
-/** Hover lift and press squish for buttons. */
-export function addButtonMotion(button, {hover = 1.04, press = 0.92} = {}) {
-    button.set_pivot_point(0.5, 0.5);
-    const sync = () => {
-        const pressed = button.pressed;
-        const scale = pressed ? press : button.hover ? hover : 1;
-        button.ease({
-            scale_x: scale, scale_y: scale,
-            duration: pressed ? 90 : 340,
-            mode: pressed ? EASE_OUT_QUAD : EASE_OUT_BACK,
-        });
-    };
-    button.connect('notify::hover', sync);
-    button.connect('notify::pressed', sync);
 }
 
 const breathing = new WeakMap();
@@ -365,23 +331,26 @@ export function breathe(actor, enabled, {low = 110, duration = 1200} = {}) {
 }
 
 /** Grows a freshly added list row open. */
-export function rowIn(row, {delay = 0, dx = -14} = {}) {
-    if (!row.mapped)
+export function rowIn(row, {delay = 0, dx = -14, onDone} = {}) {
+    if (!row.mapped) {
+        onDone?.();
         return;
+    }
     const [, height] = row.get_preferred_height(-1);
     row.clip_to_allocation = true;
     row.set({height: 0, opacity: 0, translation_x: dx});
     row.ease({
         height,
         delay,
-        duration: 340,
-        mode: EASE_OUT_QUINT,
+        duration: 250,
+        mode: EASE_OUT_QUAD,
         onStopped: () => {
             row.height = -1;
             row.clip_to_allocation = false;
+            onDone?.();
         },
     });
-    row.ease({opacity: 255, translation_x: 0, delay: delay + 60, duration: 420, mode: EASE_OUT_QUINT});
+    row.ease({opacity: 255, translation_x: 0, delay: delay + 60, duration: 250, mode: EASE_OUT_QUAD});
 }
 
 /** Swipes a row away, collapses the gap, then destroys it. */

@@ -1,9 +1,9 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
-import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import {NotificationMessage} from 'resource:///org/gnome/shell/ui/messageList.js';
 
 import * as Anim from '../anim.js';
 
@@ -22,14 +22,13 @@ export class NotificationsWidget {
         });
         const header = new St.BoxLayout({style_class: 'gnotch-page-header'});
         header.add_child(new St.Label({text: 'Notifications', style_class: 'gnotch-page-title', x_expand: true}));
-        const clear = new St.Button({style_class: 'gnotch-pill-button', label: 'Clear', can_focus: true});
-        Anim.addButtonMotion(clear, {hover: 1.05, press: 0.9});
+        const clear = new St.Button({style_class: 'button', label: 'Clear', can_focus: true});
         clear.connect('clicked', () => this._clearAll());
         header.add_child(clear);
         this.page.add_child(header);
 
         this._list = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'gnotch-list'});
-        this._empty = new St.Label({text: 'No notifications', style_class: 'gnotch-empty', x_align: Clutter.ActorAlign.CENTER});
+        this._empty = new St.Label({text: 'No Notifications', style_class: 'gnotch-empty', x_align: Clutter.ActorAlign.CENTER});
         this.page.add_child(this._empty);
         this.page.add_child(new St.ScrollView({
             child: this._list,
@@ -55,7 +54,7 @@ export class NotificationsWidget {
     _onNotification(source, notification, isNew) {
         if (this._items.some(i => i.notification === notification))
             return;
-        const row = this._makeRow(source, notification);
+        const row = this._makeRow(notification);
         const item = {notification, row};
         this._items.unshift(item);
         this._list.insert_child_at_index(row, 0);
@@ -78,34 +77,11 @@ export class NotificationsWidget {
         }
     }
 
-    _makeRow(source, notification) {
-        const row = new St.Button({style_class: 'gnotch-row', can_focus: true, x_expand: true});
-        Anim.addButtonMotion(row, {hover: 1.01, press: 0.97});
-        const box = new St.BoxLayout({x_expand: true});
-        box.add_child(new St.Icon({
-            gicon: notification.gicon ?? source.icon,
-            icon_size: 24,
-            style_class: 'gnotch-row-icon',
-        }));
-        const text = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
-        const titleBox = new St.BoxLayout();
-        const title = new St.Label({text: notification.title || source.title || '', style_class: 'gnotch-row-title', x_expand: true});
-        title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        titleBox.add_child(title);
-        titleBox.add_child(new St.Label({
-            text: notification.datetime?.format('%H:%M') ?? '',
-            style_class: 'gnotch-row-meta',
-        }));
-        const body = new St.Label({text: (notification.body ?? '').replace(/\n/g, ' '), style_class: 'gnotch-row-body'});
-        body.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        text.add_child(titleBox);
-        text.add_child(body);
-        box.add_child(text);
-        row.child = box;
-        row.connect('clicked', () => {
-            this._notch.collapse();
-            notification.activate();
-        });
+    _makeRow(notification) {
+        // GNOME's own message row: icon, title, body, time, expand, actions, close (×).
+        // Its close dismisses the notification and clicking activates it.
+        const row = new NotificationMessage(notification);
+        row.connect('clicked', () => this._notch.collapse());
         return row;
     }
 
@@ -128,7 +104,7 @@ export class NotificationsWidget {
     }
 
     onShown() {
-        Anim.stagger(this._list.get_children(), {dy: 8, delay: 140, step: 35, duration: 380});
+        Anim.stagger(this._list.get_children(), {dy: 6, delay: 100, step: 25, duration: 250});
     }
 
     _sync() {

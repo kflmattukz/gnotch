@@ -8,8 +8,10 @@ import NM from 'gi://NM';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import {Switch} from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import {QuickToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
+
 import * as Anim from '../anim.js';
-import {Tile} from '../tile.js';
 
 Gio._promisify(NM.Client, 'new_async');
 Gio._promisify(NM.Client.prototype, 'dbus_set_property');
@@ -54,17 +56,11 @@ export class NetworkWidget {
         this._listTimeout = 0;
 
         // Home tiles: Wi-Fi opens the network list, Bluetooth toggles power
-        this._wifiTile = new Tile({
-            iconName: 'network-wireless-symbolic',
-            title: 'Wi-Fi',
-            onClick: () => this._notch.selectWidget(this),
-        });
-        this._btTile = new Tile({
-            iconName: 'bluetooth-active-symbolic',
-            title: 'Bluetooth',
-            onClick: () => this._toggleBluetooth(),
-        });
-        this.tiles = [this._wifiTile.actor, this._btTile.actor];
+        this._wifiTile = new QuickToggle({title: 'Wi-Fi', icon_name: 'network-wireless-symbolic'});
+        this._wifiTile.connect('clicked', () => this._notch.selectWidget(this));
+        this._btTile = new QuickToggle({title: 'Bluetooth', icon_name: 'bluetooth-active-symbolic'});
+        this._btTile.connect('clicked', () => this._toggleBluetooth());
+        this.tiles = [this._wifiTile, this._btTile];
 
         this._buildPage();
 
@@ -84,10 +80,16 @@ export class NetworkWidget {
         });
         const header = new St.BoxLayout({style_class: 'gnotch-page-header'});
         header.add_child(new St.Label({text: 'Wi-Fi', style_class: 'gnotch-page-title', x_expand: true}));
-        this._switch = new St.Button({style_class: 'gnotch-pill-button gnotch-switch', can_focus: true});
-        Anim.addButtonMotion(this._switch, {hover: 1.05, press: 0.9});
-        this._switch.connect('clicked', () => this._toggleWifi().catch(logError));
-        header.add_child(this._switch);
+        // Shell's Switch only draws; the button around it handles clicks
+        this._switch = new Switch(false);
+        const switchButton = new St.Button({
+            style_class: 'gnotch-switch-button',
+            can_focus: true,
+            child: this._switch,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        switchButton.connect('clicked', () => this._toggleWifi().catch(logError));
+        header.add_child(switchButton);
         this.page.add_child(header);
 
         this._list = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'gnotch-list'});
@@ -110,8 +112,8 @@ export class NetworkWidget {
     }
 
     onShown() {
-        this._device?.request_scan_async(null).catch(() => {}); // NM rate-limits scans; ignore
-        Anim.stagger(this._list.get_children(), {dy: 8, delay: 140, step: 30, duration: 380});
+        this._device?.request_scan_async(this._cancellable).catch(() => {}); // NM rate-limits scans; ignore
+        Anim.stagger(this._list.get_children(), {dy: 6, delay: 100, step: 25, duration: 250});
     }
 
     _queueList() {
@@ -170,31 +172,36 @@ export class NetworkWidget {
     }
 
     _makeRow(ssid) {
-        const row = new St.Button({style_class: 'gnotch-row gnotch-network-row', can_focus: true, x_expand: true});
+        const row = new St.Button({style_class: 'popup-menu-item gnotch-network-row', can_focus: true, x_expand: true});
         const box = new St.BoxLayout({x_expand: true});
-        const icon = new St.Icon({icon_size: 16, y_align: Clutter.ActorAlign.CENTER});
+        const icon = new St.Icon({style_class: 'popup-menu-icon', y_align: Clutter.ActorAlign.CENTER});
         const label = new St.Label({
             text: ssid,
-            style_class: 'gnotch-row-title',
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
         });
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        const status = new St.Label({style_class: 'gnotch-row-meta', y_align: Clutter.ActorAlign.CENTER});
+        const status = new St.Label({style_class: 'gnotch-dim', y_align: Clutter.ActorAlign.CENTER});
         const lock = new St.Icon({
             icon_name: 'channel-secure-symbolic',
-            icon_size: 12,
-            style_class: 'gnotch-row-meta',
+            style_class: 'popup-menu-icon gnotch-dim',
             y_align: Clutter.ActorAlign.CENTER,
+        });
+        // Quick Settings marks the connected network with a check ornament
+        const check = new St.Icon({
+            icon_name: 'object-select-symbolic',
+            style_class: 'popup-menu-icon',
+            y_align: Clutter.ActorAlign.CENTER,
+            visible: false,
         });
         box.add_child(icon);
         box.add_child(label);
         box.add_child(status);
         box.add_child(lock);
+        box.add_child(check);
         row.child = box;
-        Anim.addButtonMotion(row, {hover: 1.01, press: 0.97});
 
-        const entry = {row, icon, status, lock, ap: null};
+        const entry = {row, icon, status, lock, check, ap: null};
         row.connect('clicked', () => this._connect(entry.ap).catch(e => {
             this._pendingSsid = null;
             this._syncAllRows();
@@ -213,18 +220,13 @@ export class NetworkWidget {
         const ssid = ssidOf(ap);
         const activeSsid = ssidOf(this._device?.active_access_point);
         const state = this._device?.state;
-        let status = '';
-        if (ssid === activeSsid && state === ACTIVATED)
-            status = 'Connected';
-        else if ((ssid === activeSsid || ssid === this._pendingSsid) && state >= PREPARE && state <= SECONDARIES)
-            status = 'Connecting…';
-        Anim.swapIcon(entry.icon, {icon_name: signalIcon(ap.strength)});
-        Anim.swapText(entry.status, status, {dy: 4});
-        entry.lock.visible = isSecured(ap);
-        if (status === 'Connected')
-            entry.row.add_style_pseudo_class('checked');
-        else
-            entry.row.remove_style_pseudo_class('checked');
+        const connected = ssid === activeSsid && state === ACTIVATED;
+        const connecting = !connected && (ssid === activeSsid || ssid === this._pendingSsid) &&
+            state >= PREPARE && state <= SECONDARIES;
+        entry.icon.icon_name = signalIcon(ap.strength);
+        Anim.swapText(entry.status, connecting ? 'Connecting…' : '', {dy: 4});
+        entry.lock.visible = isSecured(ap) && !connected;
+        entry.check.visible = connected;
     }
 
     _syncAllRows() {
@@ -294,23 +296,19 @@ export class NetworkWidget {
         }
 
         const enabled = this._client.wireless_enabled;
-        this._wifiTile.actor.visible = !!this._device;
+        this._wifiTile.visible = !!this._device;
         this._wifiTile.checked = enabled;
-        this._switch.label = enabled ? 'On' : 'Off';
-        if (enabled)
-            this._switch.add_style_pseudo_class('checked');
-        else
-            this._switch.remove_style_pseudo_class('checked');
+        this._switch.state = enabled;
 
         if (!enabled) {
-            this._wifiTile.setIcon('network-wireless-disabled-symbolic');
-            this._wifiTile.setSubtitle('Off');
+            this._wifiTile.icon_name = 'network-wireless-disabled-symbolic';
+            this._wifiTile.subtitle = 'Off';
         } else if (ap && this._device.state === ACTIVATED) {
-            this._wifiTile.setIcon(signalIcon(ap.strength));
-            this._wifiTile.setSubtitle(ssidOf(ap) || 'Connected');
+            this._wifiTile.icon_name = signalIcon(ap.strength);
+            this._wifiTile.subtitle = ssidOf(ap) || 'Connected';
         } else {
-            this._wifiTile.setIcon('network-wireless-offline-symbolic');
-            this._wifiTile.setSubtitle(ap ? 'Connecting…' : 'Not connected');
+            this._wifiTile.icon_name = 'network-wireless-offline-symbolic';
+            this._wifiTile.subtitle = ap ? 'Connecting…' : 'Not connected';
         }
         this._queueList();
     }
@@ -395,15 +393,15 @@ export class NetworkWidget {
         }
         this._connectedBt = paths;
 
-        this._btTile.actor.visible = hasAdapter;
+        this._btTile.visible = hasAdapter;
         this._btTile.checked = powered;
-        this._btTile.setIcon(powered ? 'bluetooth-active-symbolic' : 'bluetooth-disabled-symbolic');
+        this._btTile.icon_name = powered ? 'bluetooth-active-symbolic' : 'bluetooth-disabled-symbolic';
         if (!powered)
-            this._btTile.setSubtitle('Off');
+            this._btTile.subtitle = 'Off';
         else if (connected.length)
-            this._btTile.setSubtitle(connected.map(d => d.alias || d.name).join(', '));
+            this._btTile.subtitle = connected.map(d => d.alias || d.name).join(', ');
         else
-            this._btTile.setSubtitle('On');
+            this._btTile.subtitle = 'On';
     }
 
     _toggleBluetooth() {

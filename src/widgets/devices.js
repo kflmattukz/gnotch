@@ -67,12 +67,12 @@ export class DevicesWidget {
     }
 
     onShown() {
-        Anim.stagger(this._list.get_children(), {dy: 8, delay: 140, step: 40, duration: 380});
+        Anim.stagger(this._list.get_children(), {dy: 6, delay: 100, step: 25, duration: 250});
     }
 
     _makeRow(mount) {
         const row = new St.BoxLayout({style_class: 'gnotch-row', x_expand: true});
-        const open = new St.Button({x_expand: true, can_focus: true, style_class: 'gnotch-row-main'});
+        const open = new St.Button({x_expand: true, can_focus: true, style_class: 'popup-menu-item gnotch-row-main'});
         const box = new St.BoxLayout();
         box.add_child(new St.Icon({gicon: mount.get_symbolic_icon(), icon_size: 20, style_class: 'gnotch-row-icon'}));
         const text = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, y_align: Clutter.ActorAlign.CENTER});
@@ -82,7 +82,6 @@ export class DevicesWidget {
             text.add_child(new St.Label({text: path, style_class: 'gnotch-row-body'}));
         box.add_child(text);
         open.child = box;
-        Anim.addButtonMotion(open, {hover: 1.01, press: 0.97});
         open.connect('clicked', () => {
             this._notch.collapse();
             const context = global.create_app_launch_context(0, -1);
@@ -90,11 +89,10 @@ export class DevicesWidget {
         });
 
         const eject = new St.Button({
-            style_class: 'gnotch-icon-button',
+            style_class: 'icon-button flat',
             can_focus: true,
             child: new St.Icon({icon_name: 'media-eject-symbolic', icon_size: 16}),
         });
-        Anim.addButtonMotion(eject, {hover: 1.15, press: 0.8});
         eject.connect('clicked', () => {
             // The eject arrow bobs while the drive is being released
             eject.child.ease({

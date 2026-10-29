@@ -6,6 +6,7 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import {BarLevel} from 'resource:///org/gnome/shell/ui/barLevel.js';
 
 import * as Anim from './anim.js';
 import {Cover} from './cover.js';
@@ -17,18 +18,23 @@ import {CalendarWidget} from './widgets/calendar.js';
 import {TodoWidget} from './widgets/todo.js';
 import {NotificationsWidget} from './widgets/notifications.js';
 import {DevicesWidget} from './widgets/devices.js';
+import {PomodoroWidget} from './widgets/pomodoro.js';
+import {PrayerWidget} from './widgets/prayer.js';
+import {ShareWidget} from './widgets/share.js';
 
-const {EASE_OUT_BACK, LINEAR} = Clutter.AnimationMode;
+const {EASE_OUT_QUAD, LINEAR} = Clutter.AnimationMode;
 
 const COMPACT_HEIGHT = 32;
 const IDLE_WIDTH = 150;
 const ACTIVE_WIDTH = 280;
 const PEEK_WIDTH = 400;
 const PEEK_HEIGHT = 50;
-const EXPANDED_HEIGHT = 284;
+// The expanded height follows the selected tab's content, within these bounds
+const EXPANDED_MIN_HEIGHT = 200;
+const EXPANDED_MAX_HEIGHT = 440;
+const EXPANDED_PADDING = [18, 8, 18, 16]; // left, top, right, bottom (matches .gnotch-expanded)
 const HOVER_BULGE = [14, 4];
 const EAR = 10; // concave "shoulders" joining the screen edge
-const TAB_HOVER_DWELL_MS = 70;
 // Black tint left over the frosted glass when fully expanded. Blur my Shell's
 // top bar has none, so keep it light enough for the glass to read the same
 const GLASS_TINT = 0.12;
@@ -40,7 +46,7 @@ const GLASS_OUT = {stiffness: 420, damping: 41}; // back to solid black quickly
 const SHAPE = {
     expand: {w: Anim.Springs.BOUNCY, h: Anim.Springs.SMOOTH},
     collapse: {w: Anim.Springs.SETTLE, h: Anim.Springs.SETTLE},
-    peek: {w: {stiffness: 340, damping: 21}, h: Anim.Springs.SMOOTH},
+    peek: {w: {stiffness: 340, damping: 30}, h: Anim.Springs.SMOOTH}, // ζ≈0.81
     compact: {w: Anim.Springs.SMOOTH, h: Anim.Springs.SETTLE},
     hover: {w: Anim.Springs.SNAPPY, h: Anim.Springs.SNAPPY},
 };
@@ -48,6 +54,9 @@ const SHAPE = {
 // Order matters: earlier widgets win the compact pill
 const WIDGETS = {
     media: MediaWidget,
+    prayer: PrayerWidget,
+    pomodoro: PomodoroWidget,
+    share: ShareWidget,
     battery: BatteryWidget,
     network: NetworkWidget,
     calendar: CalendarWidget,
@@ -56,8 +65,8 @@ const WIDGETS = {
     devices: DevicesWidget,
 };
 
-// Home tab: media card on the left, a 2×2 grid of tiles from these widgets on the right
-const TILE_WIDGETS = ['battery', 'network', 'todo'];
+// Home tab: media card on the left, a 2-column grid of tiles from these widgets on the right
+const TILE_WIDGETS = ['battery', 'network', 'todo', 'pomodoro', 'prayer'];
 const OSD_DURATION_MS = 1500;
 
 function cornerRadius(height) {
@@ -65,8 +74,9 @@ function cornerRadius(height) {
 }
 
 export class Notch {
-    constructor(settings) {
+    constructor(settings, path) {
         this._settings = settings;
+        this._path = path;
         this._state = 'compact';
         this._timeouts = new Map();
         this._peekQueue = [];
@@ -114,7 +124,10 @@ export class Notch {
         this._populate();
 
         this._pill.connect('notify::hover', () => this._onHover());
-        this._pill.connect('button-press-event', () => {
+        this._pill.connect('button-press-event', (_a, event) => {
+            // The peek's own buttons (accept / decline...) don't open the notch
+            if (this._peekActions.contains(global.stage.get_event_actor(event)))
+                return Clutter.EVENT_PROPAGATE;
             if (this._state !== 'expanded')
                 this.expand();
             return Clutter.EVENT_PROPAGATE;
@@ -141,6 +154,7 @@ export class Notch {
         this._syncClock();
 
         this._hookOsd();
+        this._hookDnd();
         this.updateCompact();
         const [w, h] = this._targetSize();
         this._shape.set({w, h});
@@ -245,22 +259,19 @@ export class Notch {
         text.add_child(this._peekBody);
         // Level meter for volume / brightness / keyboard backlight
         this._peekMeter = new St.BoxLayout({style_class: 'gnotch-peek-meter', y_align: Clutter.ActorAlign.CENTER});
-        const track = new St.Widget({
-            style_class: 'gnotch-peek-track',
-            layout_manager: new Clutter.BinLayout(),
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        this._peekFill = new St.Widget({style_class: 'gnotch-peek-fill', x_expand: true, y_expand: true});
-        this._peekFill.set_pivot_point(0, 0.5);
-        track.add_child(this._peekFill);
+        // Same bar as GNOME's OSD
+        this._peekLevel = new BarLevel({style_class: 'level', y_align: Clutter.ActorAlign.CENTER});
         this._peekValue = new St.Label({style_class: 'gnotch-peek-value', y_align: Clutter.ActorAlign.CENTER});
-        this._peekMeter.add_child(track);
+        this._peekMeter.add_child(this._peekLevel);
         this._peekMeter.add_child(this._peekValue);
 
         row.add_child(this._peekIcon);
         row.add_child(this._peekCover.actor);
         row.add_child(text);
         row.add_child(this._peekMeter);
+        // Round buttons for peeks that ask something (accept / decline...)
+        this._peekActions = new St.BoxLayout({style_class: 'gnotch-peek-actions', y_align: Clutter.ActorAlign.CENTER, visible: false});
+        row.add_child(this._peekActions);
 
         // Countdown line showing how long the peek stays
         this._peekProgress = new St.Widget({
@@ -346,8 +357,8 @@ export class Notch {
         const grid = new Clutter.GridLayout({
             column_homogeneous: true,
             row_homogeneous: true,
-            column_spacing: 8,
-            row_spacing: 8,
+            column_spacing: 12, // as in the Quick Settings grid
+            row_spacing: 12,
         });
         const tiles = new St.Widget({style_class: 'gnotch-tiles', layout_manager: grid, y_expand: true});
         TILE_WIDGETS.flatMap(name => this._widgets.get(name)?.tiles ?? [])
@@ -371,22 +382,12 @@ export class Notch {
         const index = this._tabs.length;
         const icon = new St.Icon({icon_name: iconName, icon_size: 16});
         const button = new St.Button({
-            style_class: 'gnotch-tab',
+            style_class: 'icon-button gnotch-tab',
             can_focus: true,
             track_hover: true,
             child: icon,
         });
-        Anim.addButtonMotion(button, {hover: 1.08, press: 0.88});
         button.connect('clicked', () => this._selectTab(index));
-        // Switch on hover after a short dwell, so sweeping across tabs doesn't flicker
-        button.connect('notify::hover', () => {
-            if (button.hover) {
-                this._schedule('tab-hover', TAB_HOVER_DWELL_MS, () => this._selectTab(index));
-            } else if (this._hoverTab === index) {
-                this._cancel('tab-hover');
-            }
-            this._hoverTab = button.hover ? index : this._hoverTab;
-        });
         page.x_expand = true;
         page.y_expand = true;
         page.visible = false;
@@ -429,14 +430,28 @@ export class Notch {
             const oldTab = this._tabs[old];
             if (oldTab && old !== index)
                 Anim.fadeOut(oldTab.page, {dx: -dir * 26, duration: 170});
-            Anim.fadeIn(tab.page, {dx: dir * 42, duration: 420, delay: 30});
-            Anim.stagger(tab.staggerTargets(), {dy: 10, delay: 70, step: 40, duration: 380});
-            Anim.pop(tab.icon, {from: 0.7, duration: 420});
+            Anim.fadeIn(tab.page, {dx: dir * 24, duration: 250, delay: 30});
+            Anim.stagger(tab.staggerTargets(), {dy: 6, delay: 60, step: 25, duration: 250});
         }
 
         this._moveIndicator(animate);
-        if (this._state === 'expanded')
+        if (this._state === 'expanded') {
+            this._expanded.height = this._expandedHeight();
+            this._reshape(SHAPE.expand);
             tab.widgets.forEach(w => w.onShown?.());
+        }
+    }
+
+    /** Fits the selected tab: tab bar + page content + padding, within bounds. */
+    _expandedHeight() {
+        const page = this._tabs[this._currentTab]?.page;
+        const [left, top, right, bottom] = EXPANDED_PADDING;
+        const contentWidth = this._settings.get_uint('expanded-width') - left - right;
+        const [, tabBar] = this._tabBar.get_preferred_height(contentWidth);
+        const [, content] = page?.get_preferred_height(contentWidth) ?? [0, 0];
+        const spacing = this._expanded.layout_manager.spacing;
+        const height = Math.ceil(top + tabBar + spacing + content + bottom);
+        return Math.min(EXPANDED_MAX_HEIGHT, Math.max(EXPANDED_MIN_HEIGHT, height));
     }
 
     _moveIndicator(animate) {
@@ -462,6 +477,14 @@ export class Notch {
         this._indicator.animateTo({l, r}, movingRight ? {l: trail, r: lead} : {l: lead, r: trail});
     }
 
+    /** Re-fits the expanded height when a widget's page changed size while shown. */
+    refit(widget) {
+        if (this._state !== 'expanded' || !this._tabs[this._currentTab]?.widgets.includes(widget))
+            return;
+        this._expanded.height = this._expandedHeight();
+        this._reshape(SHAPE.expand);
+    }
+
     selectWidget(widget) {
         const index = this._tabs.findIndex(t => t.widgets.includes(widget) && t.widgets.length === 1);
         if (index >= 0)
@@ -472,6 +495,10 @@ export class Notch {
 
     get settings() {
         return this._settings;
+    }
+
+    get extensionPath() {
+        return this._path;
     }
 
     get expanded() {
@@ -492,7 +519,7 @@ export class Notch {
             if (mine !== was) {
                 if (widget.compactCenter) {
                     if (mine)
-                        Anim.fadeIn(widget.compactCenter, {dy: 6, delay: 200, duration: 460});
+                        Anim.fadeIn(widget.compactCenter, {dy: 4, delay: 150, duration: 250});
                     else
                         Anim.fadeOut(widget.compactCenter, {dy: -4, duration: 120});
                 }
@@ -501,11 +528,11 @@ export class Notch {
                         return;
                     if (mine) {
                         Anim.fadeIn(actor, {
-                            scale: 0.4,
-                            dx: i === 0 ? 10 : -10,
-                            delay: 110 + i * 50,
-                            duration: 520,
-                            mode: EASE_OUT_BACK,
+                            scale: 0.85,
+                            dx: i === 0 ? 6 : -6,
+                            delay: 110 + i * 40,
+                            duration: 250,
+                            mode: EASE_OUT_QUAD,
                         });
                     } else {
                         Anim.fadeOut(actor, {scale: 0.5, duration: 140});
@@ -525,7 +552,7 @@ export class Notch {
             scale_y: showClock ? 1 : 0.85,
             duration: showClock ? 360 : 160,
             delay: showClock ? 120 : 0,
-            mode: showClock ? EASE_OUT_BACK : Clutter.AnimationMode.EASE_IN_QUAD,
+            mode: showClock ? EASE_OUT_QUAD : Clutter.AnimationMode.EASE_IN_QUAD,
         });
         if (ownerChanged && this._state === 'compact')
             this._reshape(SHAPE.compact);
@@ -543,31 +570,86 @@ export class Notch {
      * @param {string} [p.key] - a peek with the same key updates in place
      * @param {boolean} [p.urgent] - jump the queue
      * @param {number} [p.duration] - ms
+     * @param {object[]} [p.actions] - round buttons: {iconName, style, onActivate}
+     * @param {boolean} [p.sticky] - stays until updated or ended (endPeek)
+     * @param {boolean} [p.force] - closes the open notch to show it
      * @returns {boolean} whether the notch shows it
      */
     peek(p) {
-        if (this._state === 'expanded')
-            return false;
-        if (p.key && this._state === 'peek' && this._currentPeek?.key === p.key) {
-            this._updatePeek(p);
+        if (this._state === 'expanded') {
+            if (!p.force)
+                return false;
+            this.collapse();
+        }
+        if (this.updatePeek(p))
+            return true;
+        const queued = p.key ? this._peekQueue.findIndex(q => q.key === p.key) : -1;
+        if (queued >= 0) {
+            this._peekQueue[queued] = p;
             return true;
         }
-        if (p.urgent)
+        if (p.urgent) {
+            // A peek waiting on an answer comes back after the urgent one
+            if (this._state === 'peek' && this._currentPeek?.sticky)
+                this._peekQueue.unshift(this._currentPeek);
             this._peekQueue.unshift(p);
-        else
+        } else {
             this._peekQueue.push(p);
+        }
         if (this._state !== 'peek' || p.urgent)
             this._showNextPeek();
         return true;
     }
 
+    /** Changes the showing peek with the same key in place; false if it isn't showing. */
+    updatePeek(p) {
+        if (!p.key || this._state !== 'peek' || this._currentPeek?.key !== p.key)
+            return false;
+        this._updatePeek(p);
+        return true;
+    }
+
+    /** Removes the peek with this key, showing or queued. */
+    endPeek(key) {
+        this._peekQueue = this._peekQueue.filter(q => q.key !== key);
+        if (this._state === 'peek' && this._currentPeek?.key === key) {
+            this._cancel('peek');
+            this._showNextPeek();
+        }
+    }
+
     _updatePeek(p) {
+        const old = this._currentPeek;
         this._currentPeek = p;
         if (p.gicon)
             Anim.swapIcon(this._peekIcon, {gicon: p.gicon});
+        else if (p.iconName && p.iconName !== old?.iconName)
+            Anim.swapIcon(this._peekIcon, {gicon: null, icon_name: p.iconName});
         this._peekTitle.text = p.title ?? '';
+        if (p.body !== undefined) {
+            this._peekBody.text = p.body;
+            this._peekBody.visible = !!p.body;
+        }
         this._setPeekLevel(p.level, true);
+        if (p.actions !== old?.actions)
+            this._setPeekActions(p.actions);
         this._startPeekTimer(p);
+    }
+
+    _setPeekActions(actions = []) {
+        this._peekActions.destroy_all_children();
+        for (const action of actions) {
+            const button = new St.Button({
+                style_class: `gnotch-peek-action ${action.style ?? ''}`,
+                can_focus: true,
+                child: new St.Icon({icon_name: action.iconName, icon_size: 16}),
+            });
+            button.connect('clicked', () => action.onActivate());
+            button.set_pivot_point(0.5, 0.5);
+            this._peekActions.add_child(button);
+        }
+        this._peekActions.visible = actions.length > 0;
+        Anim.stagger(this._peekActions.get_children(), {scale: 0.6, delay: 120, step: 50, duration: 250});
     }
 
     _setPeekLevel(level, animate) {
@@ -576,14 +658,20 @@ export class Notch {
             return;
         const value = Math.min(1, Math.max(0, level));
         this._peekValue.text = `${Math.round(level * 100)}`;
-        this._peekFill.remove_transition('scale-x');
+        // Like the Shell OSD: ease the value when it changes while shown
         if (animate)
-            this._peekFill.ease({scale_x: value, duration: 180, mode: Clutter.AnimationMode.EASE_OUT_QUINT});
+            this._peekLevel.ease_property('value', value, {duration: 100, mode: EASE_OUT_QUAD});
         else
-            this._peekFill.scale_x = value;
+            this._peekLevel.value = value;
     }
 
     _startPeekTimer(p) {
+        if (p.sticky) {
+            this._cancel('peek');
+            this._peekProgress.remove_all_transitions();
+            this._peekProgress.opacity = 0;
+            return;
+        }
         const duration = p.duration ?? this._settings.get_uint('peek-duration-ms');
         this._peekProgress.remove_all_transitions();
         this._peekProgress.set({scale_x: 1, opacity: 0});
@@ -643,6 +731,61 @@ export class Notch {
         delete osd.showAll;
     }
 
+    // ---- file drops ----
+
+    // While files are dragged over the notch it opens the widget that takes
+    // drops (acceptsDrops); releasing over the notch hands it the files,
+    // which it reads from the drag's DND selection.
+    _hookDnd() {
+        Main.xdndHandler.connectObject(
+            'drag-begin', () => {
+                this._dragging = true;
+            },
+            'drag-end', () => this._onDragEnd(),
+            this);
+        global.backend.get_dnd().connectObject('dnd-position-change',
+            (_dnd, x, y) => this._onDragMotion(x, y), this);
+    }
+
+    get _dropWidget() {
+        return [...this._widgets.values()].find(w => w.acceptsDrops) ?? null;
+    }
+
+    _containsPoint(x, y) {
+        const [px, py] = this._pill.get_transformed_position();
+        const [w, h] = this._pill.get_transformed_size();
+        return x >= px && x < px + w && y >= py && y < py + h;
+    }
+
+    _onDragMotion(x, y) {
+        const widget = this._dropWidget;
+        if (!this._dragging || !widget)
+            return;
+        if (!this._dropActive && this._containsPoint(x, y)) {
+            this._dropActive = true;
+            this._cancel('collapse');
+            if (this._state !== 'expanded')
+                this.expand();
+            this.selectWidget(widget);
+            widget.dragEnter();
+        }
+    }
+
+    _onDragEnd() {
+        this._dragging = false;
+        if (!this._dropActive)
+            return;
+        this._dropActive = false;
+        // Released over the notch: the widget takes the dragged files
+        const [x, y] = global.get_pointer();
+        const dropped = this._containsPoint(x, y);
+        this._dropWidget?.dragEnd(dropped);
+        if (!dropped) {
+            this._schedule('collapse', this._settings.get_uint('collapse-delay-ms'),
+                () => this.collapse());
+        }
+    }
+
     /** Takes keyboard focus (needed to type into entries). */
     grabKeyboard(focusActor) {
         if (!this._grab)
@@ -676,6 +819,7 @@ export class Notch {
             this._peekBody.text = p.body ?? '';
             this._peekBody.visible = !!p.body;
             this._setPeekLevel(p.level, false);
+            this._setPeekActions(p.actions);
             this._animatePeekContent();
             if (p.level !== undefined)
                 this._setPeekLevel(p.level, true);
@@ -697,23 +841,25 @@ export class Notch {
     }
 
     _animatePeekContent() {
-        Anim.fadeIn(this._peekVisual, {scale: 0.3, delay: 70, duration: 520, mode: EASE_OUT_BACK});
-        Anim.fadeIn(this._peekTitle, {dx: 16, delay: 120, duration: 420});
+        Anim.fadeIn(this._peekVisual, {scale: 0.8, delay: 70, duration: 250, mode: EASE_OUT_QUAD});
+        Anim.fadeIn(this._peekTitle, {dx: 8, delay: 100, duration: 250});
         if (this._peekBody.visible)
-            Anim.fadeIn(this._peekBody, {dx: 16, delay: 175, duration: 420});
+            Anim.fadeIn(this._peekBody, {dx: 8, delay: 130, duration: 250});
     }
 
     expand() {
         this._cancel('peek');
-        this._cancel('expand');
         this._peekQueue = [];
         this._currentPeek = null;
+        // A widget waiting on an answer (e.g. an incoming file) opens on its own tab
+        const focus = [...this._widgets.values()].find(w => w.wantsFocus?.());
+        if (focus)
+            this.selectWidget(focus);
         this._setState('expanded');
     }
 
     collapse() {
         this._cancel('collapse');
-        this._cancel('tab-hover');
         if (this._grab) {
             Main.popModal(this._grab);
             this._grab = null;
@@ -722,20 +868,15 @@ export class Notch {
             this._setState('compact');
     }
 
+    // Clicking expands (see the button-press handler); leaving the notch collapses it
     _onHover() {
+        if (this._dropActive)
+            return; // the pill ignores the pointer while files are dragged onto it
         if (this._pill.hover) {
             this._cancel('collapse');
-            if (this._state !== 'expanded') {
-                this._schedule('expand', this._settings.get_uint('expand-delay-ms'),
-                    () => this.expand());
-            }
-        } else {
-            this._cancel('expand');
-            this._cancel('tab-hover');
-            if (this._state === 'expanded') {
-                this._schedule('collapse', this._settings.get_uint('collapse-delay-ms'),
-                    () => this.collapse());
-            }
+        } else if (this._state === 'expanded') {
+            this._schedule('collapse', this._settings.get_uint('collapse-delay-ms'),
+                () => this.collapse());
         }
         // Anticipation: the pill swells slightly under the pointer
         if (this._state !== 'expanded')
@@ -764,7 +905,7 @@ export class Notch {
 
         switch (state) {
         case 'compact':
-            Anim.fadeIn(this._compact, {scale: 0.88, delay: 110, duration: 380});
+            Anim.fadeIn(this._compact, {scale: 0.95, delay: 100, duration: 250});
             this._reshape(SHAPE.collapse);
             break;
         case 'peek':
@@ -788,14 +929,14 @@ export class Notch {
     }
 
     _enterExpanded() {
-        this._expanded.set_size(this._settings.get_uint('expanded-width'), EXPANDED_HEIGHT);
+        this._expanded.set_size(this._settings.get_uint('expanded-width'), this._expandedHeight());
         this._reshape(SHAPE.expand);
 
-        Anim.fadeIn(this._expanded, {dy: -14, scale: 0.94, delay: 50, duration: 460});
+        Anim.fadeIn(this._expanded, {dy: -8, scale: 0.98, delay: 50, duration: 250});
 
         // Tab icons pop in one after another, then the page content cascades
         this._tabs.forEach((tab, i) => Anim.fadeIn(tab.button, {
-            scale: 0.5, dy: -6, delay: 90 + i * 32, duration: 520, mode: EASE_OUT_BACK,
+            dy: -4, delay: 90 + i * 25, duration: 250, mode: EASE_OUT_QUAD,
         }));
         const tab = this._tabs[this._currentTab];
         if (tab) {
@@ -803,13 +944,13 @@ export class Notch {
                 t.page.remove_all_transitions();
                 t.page.set({visible: t === tab, opacity: 255, translation_x: 0});
             });
-            Anim.stagger(tab.staggerTargets(), {dy: 12, delay: 150, step: 45, duration: 420});
+            Anim.stagger(tab.staggerTargets(), {dy: 6, delay: 100, step: 25, duration: 250});
             tab.widgets.forEach(w => w.onShown?.());
         }
         this._indicator.set({l: 0, r: 0});
         this._queueLater(() => this._moveIndicator(false));
         this._tabIndicator.set_pivot_point(0.5, 0.5);
-        Anim.fadeIn(this._tabIndicator, {scale: 0.6, delay: 200, duration: 460, mode: EASE_OUT_BACK});
+        Anim.fadeIn(this._tabIndicator, {delay: 150, duration: 250, mode: EASE_OUT_QUAD});
     }
 
     // ---- shape ----
@@ -817,7 +958,7 @@ export class Notch {
     _targetSize() {
         switch (this._state) {
         case 'expanded':
-            return [this._settings.get_uint('expanded-width'), EXPANDED_HEIGHT];
+            return [this._settings.get_uint('expanded-width'), this._expanded.height];
         case 'peek':
             return this._bulge([PEEK_WIDTH, PEEK_HEIGHT]);
         default:
@@ -921,6 +1062,8 @@ export class Notch {
         }
 
         this._unhookOsd();
+        Main.xdndHandler.disconnectObject(this);
+        global.backend.get_dnd().disconnectObject(this);
         this._shape.destroy();
         this._glass.destroy();
         this._peekCover.destroy();

@@ -36,6 +36,7 @@ const THUMBNAIL_SIZES = ['x-large', 'large', 'normal'];
  * - Players often send no art for local videos (e.g. mpv); use the file
  *   manager's cached thumbnail when there is one.
  */
+// shortcut: sync stats of tmpfs and the thumbnail cache (fast, local); go async if art lookups ever touch slow storage
 function resolveArtUrl(artUrl, mediaUrl) {
     if (artUrl.startsWith('file:///tmp/')) {
         const path = Gio.File.new_for_uri(artUrl).get_path();
@@ -215,7 +216,6 @@ export class MediaWidget {
         this._artFrame = new St.Bin({child: this._art.actor});
         this._artFrame.set_pivot_point(0.5, 0.5);
         const artButton = new St.Button({child: this._artFrame, style_class: 'gnotch-media-art-button'});
-        Anim.addButtonMotion(artButton, {hover: 1.04, press: 0.94});
         artButton.connect('clicked', () => this._active?.raise());
         artButton.y_align = Clutter.ActorAlign.CENTER;
         this.page.add_child(artButton);
@@ -252,13 +252,11 @@ export class MediaWidget {
         });
         this._prev = this._makeControl('media-skip-backward-symbolic', () => {
             this._skipDirection = -1;
-            Anim.nudge(this._prev.child, {dx: -5});
             this._active?.previous();
         });
         this._playPause = this._makeControl('media-playback-start-symbolic', () => this._active?.playPause());
         this._next = this._makeControl('media-skip-forward-symbolic', () => {
             this._skipDirection = 1;
-            Anim.nudge(this._next.child, {dx: 5});
             this._active?.next();
         });
         this._playPause.add_style_class_name('primary');
@@ -275,11 +273,10 @@ export class MediaWidget {
 
     _makeControl(iconName, callback) {
         const button = new St.Button({
-            style_class: 'gnotch-media-button',
+            style_class: 'icon-button gnotch-media-button',
             can_focus: true,
             child: new St.Icon({icon_name: iconName, icon_size: 18}),
         });
-        Anim.addButtonMotion(button, {hover: 1.1, press: 0.82});
         button.connect('clicked', callback);
         return button;
     }
@@ -374,8 +371,6 @@ export class MediaWidget {
             else
                 Anim.slideSwap([this._titleLabel, this._artistLabel, this._appLabel],
                     apply, {dx: 18 * this._skipDirection});
-            if (!first)
-                Anim.nudge(this._art.actor, {dx: -8 * this._skipDirection});
             this._skipDirection = 1;
             this._miniArt.set(this._cover(p));
             this._compactTitle.text = p?.title || p?.identity || '';
@@ -396,8 +391,8 @@ export class MediaWidget {
                 scale_x: playing ? 1 : 0.88,
                 scale_y: playing ? 1 : 0.88,
                 opacity: playing ? 255 : 170,
-                duration: playing ? 620 : 420,
-                mode: playing ? Clutter.AnimationMode.EASE_OUT_BACK : Clutter.AnimationMode.EASE_OUT_QUINT,
+                duration: 250,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             });
         }
         this._syncEqualizer();

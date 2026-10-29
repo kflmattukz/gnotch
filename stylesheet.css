@@ -1,239 +1,339 @@
-/* ---- container ----
- * Size, position and corner radius are driven by springs in notch.js,
- * so the pill itself has no padding; each content layer brings its own.
+/* Gnotch follows GNOME Shell 50's own look.
+ *
+ * The notch belongs to the top bar, and GNOME's top bar is dark in light and
+ * dark mode, so the notch always uses the Shell's dark palette (values from
+ * gnome-shell-dark.css) with the system accent. Most widgets are Shell's own
+ * (QuickToggle, Calendar, NotificationMessage, CheckBox, Switch, BarLevel);
+ * the rules below pin their colours to the dark palette and make their fills
+ * translucent so Blur my Shell's glass shows through. Size, position and
+ * corner radius of the pill are driven by springs in notch.js.
  */
+
+/* ---- palette (dark Shell, on glass) ----
+ * text #ffffff, dim rgba(255,255,255,0.7), faint rgba(255,255,255,0.5)
+ * fill 0.1, hover 0.15, active 0.2 (white overlays)
+ */
+
 .gnotch {
-    /* the background is a separate tint layer over the glass (see notch.js) */
-    color: #fff;
-    font-size: 10.5pt;
+    color: #ffffff;
 }
+
+.gnotch-dim { color: rgba(255, 255, 255, 0.7); }
+
+.gnotch-empty {
+    color: rgba(255, 255, 255, 0.7);
+    font-style: italic;
+    padding: 12px;
+}
+
+/* ---- compact pill ---- */
+.gnotch-compact { padding: 0 14px; spacing: 12px; }
 
 .gnotch-clock {
     font-weight: bold;
     font-feature-settings: "tnum";
 }
 
-/* ---- compact pill ---- */
-.gnotch-compact { padding: 0 14px; spacing: 10px; }
-
 .gnotch-compact-title {
-    font-size: 9.5pt;
+    font-size: 0.909em;
     font-weight: bold;
-    color: rgba(255, 255, 255, 0.92);
 }
 
-/* album art: corner radius is set inline (concentric with the notch) */
 .gnotch-cover-fallback { color: rgba(255, 255, 255, 0.7); }
 
-.gnotch-eq {
-    spacing: 2px;
-    height: 16px;
-}
+.gnotch-eq { spacing: 2px; height: 16px; }
+.gnotch-eq-bar { width: 3px; border-radius: 2px; background-color: -st-accent-color; }
 
-.gnotch-eq-bar {
-    width: 3px;
-    border-radius: 2px;
-    background-color: #30d158;
-}
-
+/* battery: GNOME palette success / error */
 .gnotch-battery-icon,
-.gnotch-battery-mini {
-    color: #fff;
-    transition-duration: 300ms;
-}
+.gnotch-battery-mini { color: #ffffff; transition-duration: 200ms; }
 .gnotch-battery-mini { font-weight: bold; font-feature-settings: "tnum"; }
-.gnotch-battery-icon.charging, .gnotch-battery-mini.charging { color: #30d158; }
-.gnotch-battery-icon.low, .gnotch-battery-mini.low { color: #ff453a; }
+.gnotch-battery-icon.charging, .gnotch-battery-mini.charging { color: #2ec27e; }
+.gnotch-battery-icon.low, .gnotch-battery-mini.low { color: #f66151; }
 
 /* ---- peek ---- */
 .gnotch-peek-row { spacing: 12px; padding: 0 18px; }
 .gnotch-peek-title { font-weight: bold; }
-.gnotch-peek-body { color: rgba(255, 255, 255, 0.6); font-size: 9pt; }
-.gnotch-peek-meter { spacing: 8px; }
-.gnotch-peek-track {
-    width: 110px;
-    height: 5px;
-    border-radius: 3px;
-    background-color: rgba(255, 255, 255, 0.18);
-}
-.gnotch-peek-fill { border-radius: 3px; background-color: #fff; }
+.gnotch-peek-body { color: rgba(255, 255, 255, 0.7); font-size: 0.818em; }
+.gnotch-peek-meter { spacing: 12px; }
 .gnotch-peek-value {
-    font-size: 9pt;
     font-weight: bold;
     font-feature-settings: "tnum";
-    min-width: 24px;
+    min-width: 2em;
     text-align: right;
 }
 .gnotch-peek-progress {
     height: 2px;
-    margin: 0 26px 5px;
+    margin: 0 24px 4px;
     border-radius: 1px;
-    background-color: rgba(255, 255, 255, 0.28);
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* the Shell OSD's level bar */
+.gnotch .level {
+    min-width: 120px;
+    -barlevel-height: 6px;
+    -barlevel-background-color: rgba(255, 255, 255, 0.1);
+    -barlevel-active-background-color: #ffffff;
+    -barlevel-overdrive-color: #c01c28;
+    -barlevel-overdrive-separator-width: 3px;
 }
 
 /* ---- expanded ---- */
-.gnotch-expanded {
-    spacing: 10px;
-    padding: 8px 18px 16px;
-}
+/* padding must match EXPANDED_PADDING in notch.js */
+.gnotch-expanded { spacing: 12px; padding: 8px 18px 16px; }
 
-.gnotch-tabs { spacing: 4px; }
-
-.gnotch-tab-indicator {
-    border-radius: 99px;
-    background-color: rgba(255, 255, 255, 0.16);
-}
-
-.gnotch-tab {
-    padding: 5px 12px;
-    border-radius: 99px;
-    color: rgba(255, 255, 255, 0.5);
-    transition-duration: 220ms;
-}
-.gnotch-tab:hover { color: rgba(255, 255, 255, 0.85); }
-.gnotch-tab:checked { color: #fff; }
-
-.gnotch-home { spacing: 14px; }
-.gnotch-divider { width: 1px; background-color: rgba(255, 255, 255, 0.1); margin: 6px 0; }
-.gnotch-tiles { width: 236px; }
-
-.gnotch-page { spacing: 8px; }
-.gnotch-page-header { spacing: 8px; }
-.gnotch-page-title { font-weight: bold; font-size: 11pt; }
-.gnotch-empty { color: rgba(255, 255, 255, 0.45); padding: 12px; }
-.gnotch-list { spacing: 4px; }
-
-/* home tiles: equal squares, icon on top, text at the bottom */
-.gnotch-tile {
-    background-color: rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    padding: 10px 12px;
-    text-align: left;
-    transition-duration: 220ms;
-}
-.gnotch-tile:hover { background-color: rgba(255, 255, 255, 0.13); }
-.gnotch-tile:checked { background-color: #0a84ff; }
-.gnotch-tile:checked:hover { background-color: #3d9cff; }
-.gnotch-tile-icon { color: #fff; }
-.gnotch-tile-title { font-weight: bold; font-feature-settings: "tnum"; }
-.gnotch-tile-subtitle { font-size: 8.5pt; color: rgba(255, 255, 255, 0.65); }
-.gnotch-tile:checked .gnotch-tile-subtitle { color: rgba(255, 255, 255, 0.85); }
-
-/* battery tile */
-.gnotch-battery.low .gnotch-tile-title { color: #ff453a; }
-.gnotch-level {
-    height: 4px;
-    margin-top: 6px;
-    border-radius: 2px;
-    background-color: rgba(255, 255, 255, 0.12);
-}
-.gnotch-level-fill {
-    border-radius: 2px;
-    background-color: #fff;
-    transition-duration: 400ms;
-}
-.gnotch-battery.charging .gnotch-level-fill { background-color: #30d158; }
-.gnotch-battery.low .gnotch-level-fill { background-color: #ff453a; }
-
-/* wifi list */
-.gnotch-switch:checked { background-color: #0a84ff; color: #fff; }
-.gnotch-network-row:checked { background-color: rgba(10, 132, 255, 0.35); }
-
-.gnotch-icon-button,
-.gnotch-pill-button {
-    border-radius: 99px;
-    padding: 4px 8px;
-    color: rgba(255, 255, 255, 0.8);
-    transition-duration: 180ms;
-}
-.gnotch-pill-button { background-color: rgba(255, 255, 255, 0.1); font-size: 9pt; padding: 3px 12px; }
-.gnotch-icon-button:hover, .gnotch-pill-button:hover { background-color: rgba(255, 255, 255, 0.16); color: #fff; }
-
-/* list rows */
-.gnotch-row {
-    border-radius: 12px;
-    padding: 6px 10px;
-    spacing: 10px;
-    background-color: rgba(255, 255, 255, 0.05);
+.gnotch-tabs { spacing: 6px; }
+.gnotch-tab-indicator { border-radius: 999px; background-color: -st-accent-color; }
+.gnotch .gnotch-tab {
+    padding: 6px 12px;
+    color: rgba(255, 255, 255, 0.7);
+    background-color: transparent;
     transition-duration: 200ms;
 }
-.gnotch-row:hover { background-color: rgba(255, 255, 255, 0.1); }
-.gnotch-row > StBoxLayout, .gnotch-row-main > StBoxLayout { spacing: 10px; }
-.gnotch-row-icon { margin-top: 2px; }
+.gnotch .gnotch-tab:hover { color: #ffffff; background-color: rgba(255, 255, 255, 0.1); }
+.gnotch .gnotch-tab:checked,
+.gnotch .gnotch-tab:checked:hover { color: -st-accent-fg-color; background-color: transparent; }
+.gnotch .gnotch-tab StIcon { icon-size: 16px; }
+
+.gnotch-page { spacing: 12px; }
+.gnotch-page-header { spacing: 12px; }
+.gnotch-page-title { font-weight: bold; }
+.gnotch-list { spacing: 6px; }
+
+/* ---- home ---- */
+.gnotch-home { spacing: 18px; }
+.gnotch-divider { width: 1px; margin: 6px 0; background-color: rgba(255, 255, 255, 0.1); }
+
+/* ---- Shell buttons, on glass ---- */
+.gnotch .button,
+.gnotch .icon-button,
+.gnotch .quick-toggle,
+.gnotch .calendar .calendar-month-header .pager-button {
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+.gnotch .button:hover,
+.gnotch .icon-button:hover,
+.gnotch .quick-toggle:hover,
+.gnotch .calendar .calendar-month-header .pager-button:hover { color: #ffffff; background-color: rgba(255, 255, 255, 0.15); }
+.gnotch .button:active,
+.gnotch .icon-button:active,
+.gnotch .quick-toggle:active,
+.gnotch .calendar .calendar-month-header .pager-button:active { color: #ffffff; background-color: rgba(255, 255, 255, 0.2); }
+.gnotch .button:insensitive,
+.gnotch .icon-button:insensitive { color: rgba(255, 255, 255, 0.5); background-color: rgba(255, 255, 255, 0.05); }
+.gnotch .button:focus,
+.gnotch .icon-button:focus,
+.gnotch .quick-toggle:focus {
+    box-shadow: inset 0 0 0 2px st-transparentize(st-mix(-st-accent-color, #ffffff, 60%), 0.2) !important;
+}
+
+/* flat icon buttons inside rows (delete, eject) */
+.gnotch .icon-button.flat { background-color: transparent; padding: 6px; }
+.gnotch .icon-button.flat:hover { background-color: rgba(255, 255, 255, 0.1); }
+.gnotch .icon-button.flat:active { background-color: rgba(255, 255, 255, 0.15); }
+
+/* quick toggles: on = accent, as in Quick Settings */
+.gnotch .quick-toggle:checked { color: -st-accent-fg-color; background-color: -st-accent-color; }
+.gnotch .quick-toggle:checked:hover { color: -st-accent-fg-color; background-color: st-lighten(-st-accent-color, 4%); }
+.gnotch .quick-toggle:checked:active { color: -st-accent-fg-color; background-color: st-lighten(-st-accent-color, 9%); }
+.gnotch .quick-toggle .quick-toggle-subtitle { color: inherit; }
+.gnotch .gnotch-battery.low .quick-toggle-icon { color: #f66151; }
+.gnotch .gnotch-battery.charging .quick-toggle-icon { color: #2ec27e; }
+
+/* ---- Shell switch ---- */
+.gnotch-switch-button { padding: 0; border-radius: 999px; }
+.gnotch .toggle-switch { color: #ffffff; background: rgba(255, 255, 255, 0.15); }
+.gnotch .toggle-switch:hover { background: rgba(255, 255, 255, 0.2); }
+.gnotch .toggle-switch .handle { background: #d7d7d8; }
+.gnotch .toggle-switch:checked { color: -st-accent-fg-color; background: -st-accent-color; }
+.gnotch .toggle-switch:checked .handle { background: #ffffff; }
+
+/* ---- list rows (Wi-Fi, drives): menu-item look ---- */
+.gnotch .popup-menu-item {
+    color: #ffffff;
+    background-color: transparent;
+    border-radius: 12px;
+    padding: 9px 12px;
+    transition-duration: 100ms;
+}
+.gnotch .popup-menu-item:hover { background-color: rgba(255, 255, 255, 0.1); }
+.gnotch .popup-menu-item:active { background-color: rgba(255, 255, 255, 0.15); }
+.gnotch .popup-menu-item > StBoxLayout { spacing: 12px; }
+.gnotch .popup-menu-icon { icon-size: 1.091em; }
+
 .gnotch-row-title { font-weight: bold; }
-.gnotch-row-body { font-size: 9pt; color: rgba(255, 255, 255, 0.6); }
-.gnotch-row-meta { font-size: 8.5pt; color: rgba(255, 255, 255, 0.45); padding-left: 8px; }
-.gnotch-row.done .gnotch-todo-text { text-decoration: line-through; }
+.gnotch-row-body { font-size: 0.818em; color: rgba(255, 255, 255, 0.7); }
+
+/* ---- Shell message rows (notifications) ---- */
+.gnotch .message { color: #ffffff; background-color: rgba(255, 255, 255, 0.1); }
+.gnotch .message:hover { color: #ffffff; background-color: rgba(255, 255, 255, 0.15); }
+.gnotch .message:active { color: #ffffff; background-color: rgba(255, 255, 255, 0.2); }
+.gnotch .message .message-header,
+.gnotch .message .message-header .message-header-content .event-time { color: rgba(255, 255, 255, 0.7); }
+.gnotch .message .message-header .message-expand-button,
+.gnotch .message .message-header .message-close-button { color: #ffffff; background-color: rgba(255, 255, 255, 0.15); }
+.gnotch .message .message-header .message-expand-button:hover,
+.gnotch .message .message-header .message-close-button:hover { background-color: rgba(255, 255, 255, 0.3); }
+
+/* ---- Shell calendar ---- */
+.gnotch-calendar { spacing: 18px; }
+.gnotch .calendar .calendar-day,
+.gnotch .calendar .calendar-month-header .calendar-month-label { color: #ffffff; background-color: transparent; }
+.gnotch .calendar .calendar-day:hover,
+.gnotch .calendar .calendar-month-header .calendar-month-label:hover { background-color: rgba(255, 255, 255, 0.1); }
+.gnotch .calendar .calendar-day:selected,
+.gnotch .calendar .calendar-day:active { background-color: rgba(255, 255, 255, 0.2); }
+.gnotch .calendar .calendar-day.calendar-weekend { color: rgba(255, 255, 255, 0.6); }
+.gnotch .calendar .calendar-day.calendar-other-month { color: rgba(255, 255, 255, 0.5); }
+.gnotch .calendar .calendar-day.calendar-today,
+.gnotch .calendar .calendar-day.calendar-today:hover { color: -st-accent-fg-color; background-color: -st-accent-color; }
+.gnotch .calendar .calendar-day-heading,
+.gnotch .calendar .calendar-week-number { color: rgba(255, 255, 255, 0.7); }
+
+/* events next to the calendar, like the date menu */
+.gnotch .events-button { margin: 0; color: #ffffff; background-color: rgba(255, 255, 255, 0.1); }
+.gnotch .events-button .events-box .events-title,
+.gnotch .events-button .events-box .events-list .event-box .event-time,
+.gnotch .events-button .events-box .events-list .event-placeholder { color: rgba(255, 255, 255, 0.7); }
 
 /* ---- media ---- */
-.gnotch-media { spacing: 14px; }
-.gnotch-media-side { spacing: 10px; }
-.gnotch-media-top { spacing: 10px; }
+.gnotch-media { spacing: 18px; }
+.gnotch-media-side { spacing: 12px; }
+.gnotch-media-top { spacing: 12px; }
 .gnotch-media-art-button { border-radius: 16px; }
-.gnotch-media-info { spacing: 1px; }
-.gnotch-media-app { font-size: 8pt; color: rgba(255, 255, 255, 0.45); text-transform: uppercase; }
-.gnotch-media-title { font-weight: bold; font-size: 12pt; }
-.gnotch-media-artist { color: rgba(255, 255, 255, 0.65); font-size: 9.5pt; }
+.gnotch-media-info { spacing: 2px; }
+.gnotch-media-app { font-size: 0.818em; color: rgba(255, 255, 255, 0.7); }
+.gnotch-media-title { font-weight: bold; font-size: 1.091em; }
+.gnotch-media-artist { color: rgba(255, 255, 255, 0.7); }
 .gnotch-eq-large { spacing: 3px; height: 26px; }
 .gnotch-eq-large .gnotch-eq-bar { width: 4px; }
-.gnotch-media-controls { spacing: 14px; }
-.gnotch-media-button {
-    border-radius: 99px;
-    padding: 9px;
-    color: #fff;
-    transition-duration: 180ms;
-}
-.gnotch-media-button:hover { background-color: rgba(255, 255, 255, 0.12); }
-.gnotch-media-button:insensitive { color: rgba(255, 255, 255, 0.3); }
-.gnotch-media-button.primary { background-color: #fff; color: #000; padding: 12px; }
-.gnotch-media-button.primary:hover { background-color: rgba(255, 255, 255, 0.85); }
+.gnotch-media-controls { spacing: 12px; }
+.gnotch .gnotch-media-button { padding: 9px; }
+.gnotch .gnotch-media-button StIcon { icon-size: 16px; }
+.gnotch .gnotch-media-button.primary { color: -st-accent-fg-color; background-color: -st-accent-color; padding: 12px; }
+.gnotch .gnotch-media-button.primary:hover { background-color: st-lighten(-st-accent-color, 4%); }
+.gnotch .gnotch-media-button.primary:active { background-color: st-lighten(-st-accent-color, 9%); }
 
 /* ---- to-do ---- */
-.gnotch-entry {
-    border-radius: 12px;
-    padding: 6px 12px;
-    background-color: rgba(255, 255, 255, 0.08);
-    color: #fff;
+.gnotch StEntry {
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.1);
     border: none;
+    border-radius: 12px;
+    padding: 9px 12px;
+    caret-color: #ffffff;
+    selection-background-color: st-transparentize(-st-accent-color, 0.5);
+    selected-color: #ffffff;
     box-shadow: none;
     transition-duration: 200ms;
 }
-.gnotch-entry:hover { background-color: rgba(255, 255, 255, 0.11); }
-.gnotch-entry:focus { background-color: rgba(255, 255, 255, 0.14); }
-
-/* ---- calendar ---- */
-.gnotch-calendar { spacing: 18px; }
-.gnotch-cal-header { spacing: 4px; padding-bottom: 4px; }
-.gnotch-cal-weekday {
-    font-size: 8.5pt;
-    color: rgba(255, 255, 255, 0.45);
-    padding: 2px 0;
+.gnotch StEntry:hover { background-color: rgba(255, 255, 255, 0.15); }
+.gnotch StEntry:focus {
+    background-color: rgba(255, 255, 255, 0.15);
+    box-shadow: inset 0 0 0 2px st-transparentize(st-mix(-st-accent-color, #ffffff, 60%), 0.2);
 }
-.gnotch-cal-day {
-    width: 28px;
-    height: 24px;
-    border-radius: 99px;
-    font-size: 9pt;
+.gnotch StEntry StLabel.hint-text { color: rgba(255, 255, 255, 0.5); }
+
+.gnotch .check-box StIcon { border-color: rgba(255, 255, 255, 0.15); }
+.gnotch .check-box:hover StIcon { border-color: rgba(255, 255, 255, 0.2); }
+.gnotch .check-box:checked StIcon { background-color: -st-accent-color; color: -st-accent-fg-color; border-color: transparent; }
+
+/* finished tasks: struck through, faded, with a soft success tint */
+.gnotch-row { spacing: 6px; border-radius: 12px; padding: 3px 6px; transition-duration: 200ms; }
+.gnotch-row:hover { background-color: rgba(255, 255, 255, 0.05); }
+.gnotch-row.done { background-color: rgba(46, 194, 126, 0.12); }
+.gnotch-row.done .check-box StLabel { text-decoration: line-through; color: rgba(255, 255, 255, 0.5); }
+
+/* #badge# pills after a task (GNOME palette, translucent on glass) */
+.gnotch-badges { spacing: 4px; margin-left: 6px; }
+.gnotch-badge {
+    font-size: 0.727em;
+    font-weight: bold;
+    padding: 1px 7px;
+    border-radius: 999px;
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.15);
+}
+.gnotch-badge.gnotch-badge-important { color: #ff9a8f; background-color: rgba(246, 97, 81, 0.25); }
+.gnotch-badge.gnotch-badge-high { color: #ffbe6f; background-color: rgba(255, 163, 72, 0.25); }
+.gnotch-badge.gnotch-badge-mid { color: #f8e45c; background-color: rgba(248, 228, 92, 0.2); }
+.gnotch-badge.gnotch-badge-low { color: #8ff0a4; background-color: rgba(87, 227, 137, 0.2); }
+.gnotch-badge.gnotch-badge-info { color: #99c1f1; background-color: rgba(98, 160, 234, 0.25); }
+.gnotch-row.done .gnotch-badge { color: rgba(255, 255, 255, 0.5); background-color: rgba(255, 255, 255, 0.08); }
+
+/* ---- pomodoro ---- */
+.gnotch-pomodoro-time {
+    font-size: 2.5em;
+    font-weight: bold;
     font-feature-settings: "tnum";
-    color: #fff;
-    transition-duration: 200ms;
 }
-.gnotch-cal-day:hover { background-color: rgba(255, 255, 255, 0.12); }
-.gnotch-cal-day.other-month { color: rgba(255, 255, 255, 0.3); }
-.gnotch-cal-day.has-events { font-weight: bold; text-decoration: underline; }
-.gnotch-cal-day.today { color: #ff453a; font-weight: bold; }
-.gnotch-cal-day:selected { background-color: #ff453a; color: #fff; }
-.gnotch-cal-events { spacing: 8px; }
-.gnotch-event {
-    spacing: 10px;
-    padding: 6px 10px;
-    border-radius: 10px;
-    background-color: rgba(255, 255, 255, 0.06);
-    border-left: 3px solid #0a84ff;
-}
-.gnotch-event-time { font-size: 9pt; color: rgba(255, 255, 255, 0.6); width: 56px; }
+.gnotch-pomodoro-mini { font-weight: bold; font-feature-settings: "tnum"; }
+.gnotch-pomodoro-icon.focus, .gnotch-pomodoro-mini.focus { color: #f66151; }
+.gnotch-pomodoro-icon.break, .gnotch-pomodoro-mini.break { color: #2ec27e; }
 
-/* to-do: the text is a toggle; finished tasks get a soft green tint */
-.gnotch-todo-label { padding: 0; text-align: left; }
-.gnotch-row.done { background-color: rgba(48, 209, 88, 0.12); }
-.gnotch-row.done:hover { background-color: rgba(48, 209, 88, 0.18); }
+/* ---- prayer times ---- */
+.gnotch-prayer-list { spacing: 6px; }
+.gnotch-prayer {
+    spacing: 2px;
+    padding: 12px 6px;
+    border-radius: 12px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+.gnotch-prayer-name { font-size: 0.818em; color: rgba(255, 255, 255, 0.7); }
+.gnotch-prayer-time { font-weight: bold; font-size: 1.091em; font-feature-settings: "tnum"; }
+.gnotch-prayer.past { background-color: rgba(255, 255, 255, 0.05); }
+.gnotch-prayer.past .gnotch-prayer-time,
+.gnotch-prayer.past .gnotch-prayer-name { color: rgba(255, 255, 255, 0.5); }
+.gnotch-prayer.next { color: -st-accent-fg-color; background-color: -st-accent-color; }
+.gnotch-prayer.next .gnotch-prayer-name { color: -st-accent-fg-color; }
+.gnotch-prayer-mini { font-weight: bold; font-feature-settings: "tnum"; }
+.gnotch-prayer-icon { color: -st-accent-color; }
+
+/* ---- share (LocalSend) ---- */
+.gnotch-share-body { spacing: 18px; }
+.gnotch-share-col { spacing: 6px; }
+.gnotch-share-caption { font-size: 0.818em; font-weight: bold; color: rgba(255, 255, 255, 0.7); }
+.gnotch-share-drop {
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+    border-radius: 16px;
+    background-color: st-transparentize(-st-accent-color, 0.85);
+}
+.gnotch-share-drop-inner { spacing: 6px; }
+.gnotch-share-mini { font-weight: bold; font-feature-settings: "tnum"; }
+.gnotch-share-icon { color: -st-accent-color; }
+.gnotch-share-status { font-size: 0.818em; color: rgba(255, 255, 255, 0.5); }
+.gnotch-share-status.warning { color: #f8e45c; }
+.gnotch .gnotch-row-body.gnotch-share-error { color: #ff7b63; }
+
+/* incoming LocalSend request */
+.gnotch-share-incoming {
+    spacing: 9px;
+    padding: 12px;
+    border-radius: 16px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+.gnotch-share-incoming-top { spacing: 12px; }
+.gnotch-share-incoming-buttons { spacing: 6px; }
+.gnotch .button.gnotch-share-accept { color: -st-accent-fg-color; background-color: -st-accent-color; }
+.gnotch .button.gnotch-share-accept:hover { background-color: st-lighten(-st-accent-color, 4%); }
+.gnotch .button.gnotch-share-accept:active { background-color: st-lighten(-st-accent-color, 9%); }
+
+/* round buttons in a peek (accept / decline an incoming file) */
+.gnotch-peek-actions { spacing: 8px; }
+.gnotch .gnotch-peek-action {
+    padding: 8px;
+    border-radius: 999px;
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.15);
+    transition-duration: 150ms;
+}
+.gnotch .gnotch-peek-action:hover { background-color: rgba(255, 255, 255, 0.25); }
+.gnotch .gnotch-peek-action.accept { background-color: #2ec27e; }
+.gnotch .gnotch-peek-action.accept:hover { background-color: #33d17a; }
+.gnotch .gnotch-peek-action.decline { background-color: #e01b24; }
+.gnotch .gnotch-peek-action.decline:hover { background-color: #ed333b; }
+
+.gnotch .button.gnotch-share-folder { padding: 4px 10px; }
+.gnotch-share-folder-box { spacing: 6px; }
