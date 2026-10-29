@@ -9,6 +9,7 @@ import {loadInterfaceXML} from 'resource:///org/gnome/shell/misc/fileUtils.js';
 
 import * as Anim from '../anim.js';
 import {Cover} from '../cover.js';
+import {hostPath} from '../sandbox.js';
 
 const DBusProxy = Gio.DBusProxy.makeProxyWrapper(loadInterfaceXML('org.freedesktop.DBus'));
 const MprisProxy = Gio.DBusProxy.makeProxyWrapper(loadInterfaceXML('org.mpris.MediaPlayer2'));
@@ -30,30 +31,15 @@ const THUMBNAIL_SIZES = ['x-large', 'large', 'normal'];
 
 /**
  * Makes art URLs loadable from the host:
- * - Flatpak apps (e.g. Chrome) write art to their private /tmp, which the host
- *   sees at $XDG_RUNTIME_DIR/.flatpak/<app-id>/tmp. Not every app reports its
- *   id, so every sandbox is checked.
+ * - Flatpak apps (e.g. Chrome) write art to their private /tmp (see hostPath).
  * - Players often send no art for local videos (e.g. mpv); use the file
  *   manager's cached thumbnail when there is one.
  */
 // shortcut: sync stats of tmpfs and the thumbnail cache (fast, local); go async if art lookups ever touch slow storage
 function resolveArtUrl(artUrl, mediaUrl) {
     if (artUrl.startsWith('file:///tmp/')) {
-        const path = Gio.File.new_for_uri(artUrl).get_path();
-        if (GLib.file_test(path, GLib.FileTest.EXISTS))
-            return artUrl;
-        const sandboxes = GLib.build_filenamev([GLib.get_user_runtime_dir(), '.flatpak']);
-        try {
-            const dir = GLib.Dir.open(sandboxes, 0);
-            for (let name; (name = dir.read_name()) !== null;) {
-                const candidate = GLib.build_filenamev([sandboxes, name, path]);
-                if (GLib.file_test(candidate, GLib.FileTest.EXISTS))
-                    return GLib.filename_to_uri(candidate, null);
-            }
-        } catch {
-            // no Flatpak runtime dir
-        }
-        return artUrl;
+        const path = hostPath(Gio.File.new_for_uri(artUrl).get_path());
+        return path ? GLib.filename_to_uri(path, null) : artUrl;
     }
     if (!artUrl && typeof mediaUrl === 'string' && mediaUrl.startsWith('file://')) {
         const hash = GLib.compute_checksum_for_string(GLib.ChecksumType.MD5, mediaUrl, -1);

@@ -21,6 +21,7 @@ import {DevicesWidget} from './widgets/devices.js';
 import {PomodoroWidget} from './widgets/pomodoro.js';
 import {PrayerWidget} from './widgets/prayer.js';
 import {ShareWidget} from './widgets/share.js';
+import {WhatsAppWidget} from './widgets/whatsapp.js';
 
 const {EASE_OUT_QUAD, LINEAR} = Clutter.AnimationMode;
 
@@ -54,6 +55,7 @@ const SHAPE = {
 // Order matters: earlier widgets win the compact pill
 const WIDGETS = {
     media: MediaWidget,
+    whatsapp: WhatsAppWidget,
     prayer: PrayerWidget,
     pomodoro: PomodoroWidget,
     share: ShareWidget,
@@ -269,6 +271,9 @@ export class Notch {
         row.add_child(this._peekCover.actor);
         row.add_child(text);
         row.add_child(this._peekMeter);
+        // A widget's own live content (e.g. a call's voice waves)
+        this._peekExtra = new St.Bin({y_align: Clutter.ActorAlign.CENTER, visible: false});
+        row.add_child(this._peekExtra);
         // Round buttons for peeks that ask something (accept / decline...)
         this._peekActions = new St.BoxLayout({style_class: 'gnotch-peek-actions', y_align: Clutter.ActorAlign.CENTER, visible: false});
         row.add_child(this._peekActions);
@@ -493,6 +498,11 @@ export class Notch {
 
     // ---- API used by widgets ----
 
+    /** Whether a widget shows this notification its own way (the notifications widget then doesn't peek). */
+    claimsNotification(source, notification) {
+        return [...this._widgets.values()].some(w => w.claimsNotification?.(source, notification));
+    }
+
     get settings() {
         return this._settings;
     }
@@ -573,6 +583,7 @@ export class Notch {
      * @param {object[]} [p.actions] - round buttons: {iconName, style, onActivate}
      * @param {boolean} [p.sticky] - stays until updated or ended (endPeek)
      * @param {boolean} [p.force] - closes the open notch to show it
+     * @param {Clutter.Actor} [p.extra] - the widget's own content, before the buttons (it stays the widget's)
      * @returns {boolean} whether the notch shows it
      */
     peek(p) {
@@ -588,15 +599,17 @@ export class Notch {
             this._peekQueue[queued] = p;
             return true;
         }
-        if (p.urgent) {
-            // A peek waiting on an answer comes back after the urgent one
-            if (this._state === 'peek' && this._currentPeek?.sticky)
+        // A sticky peek (a ringing or ongoing call) steps aside for anything
+        // new and comes back after it, instead of holding up the queue
+        const displacing = this._state === 'peek' && this._currentPeek?.sticky;
+        if (p.urgent || displacing) {
+            if (displacing)
                 this._peekQueue.unshift(this._currentPeek);
             this._peekQueue.unshift(p);
         } else {
             this._peekQueue.push(p);
         }
-        if (this._state !== 'peek' || p.urgent)
+        if (this._state !== 'peek' || p.urgent || displacing)
             this._showNextPeek();
         return true;
     }
@@ -607,6 +620,11 @@ export class Notch {
             return false;
         this._updatePeek(p);
         return true;
+    }
+
+    /** The peek on screen, or null. */
+    get currentPeek() {
+        return this._state === 'peek' ? this._currentPeek : null;
     }
 
     /** Removes the peek with this key, showing or queued. */
@@ -633,7 +651,14 @@ export class Notch {
         this._setPeekLevel(p.level, true);
         if (p.actions !== old?.actions)
             this._setPeekActions(p.actions);
+        this._setPeekExtra(p.extra);
         this._startPeekTimer(p);
+    }
+
+    _setPeekExtra(extra = null) {
+        if (this._peekExtra.child !== extra)
+            this._peekExtra.child = extra;
+        this._peekExtra.visible = !!extra;
     }
 
     _setPeekActions(actions = []) {
@@ -820,6 +845,7 @@ export class Notch {
             this._peekBody.visible = !!p.body;
             this._setPeekLevel(p.level, false);
             this._setPeekActions(p.actions);
+            this._setPeekExtra(p.extra);
             this._animatePeekContent();
             if (p.level !== undefined)
                 this._setPeekLevel(p.level, true);
@@ -864,8 +890,11 @@ export class Notch {
             Main.popModal(this._grab);
             this._grab = null;
         }
-        if (this._state === 'expanded')
+        if (this._state === 'expanded') {
             this._setState('compact');
+            // e.g. an ongoing call shows itself again
+            this._widgets.forEach(w => w.onCollapsed?.());
+        }
     }
 
     // Clicking expands (see the button-press handler); leaving the notch collapses it

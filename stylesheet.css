@@ -337,3 +337,12 @@
 
 .gnotch .button.gnotch-share-folder { padding: 4px 10px; }
 .gnotch-share-folder-box { spacing: 6px; }
+
+/* ---- WhatsApp call ---- */
+.gnotch-call-waves { spacing: 10px; margin-right: 4px; }
+.gnotch-wave { spacing: 2px; height: 18px; }
+.gnotch-wave-bar { width: 3px; border-radius: 2px; }
+.gnotch-wave.theirs .gnotch-wave-bar { background-color: #57e389; }
+.gnotch-wave.mine .gnotch-wave-bar { background-color: -st-accent-color; }
+.gnotch-call-icon { color: #57e389; }
+.gnotch-call-mini { font-weight: bold; font-feature-settings: "tnum"; color: #57e389; }

@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Gnotch for WhatsApp Web",
+  "version": "0.3.0",
+  "description": "Lets the Gnotch GNOME Shell extension control WhatsApp Web calls from the notch. Pair it by accepting the prompt in the notch.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "whatsapp-dom.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html"
+}

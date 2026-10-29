@@ -2,7 +2,7 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.gnotch" path="/org/gnome/shell/extensions/gnotch/">
     <key name="enabled-widgets" type="as">
-      <default>['media', 'prayer', 'pomodoro', 'share', 'battery', 'network', 'calendar', 'todo', 'notifications', 'devices']</default>
+      <default>['media', 'whatsapp', 'prayer', 'pomodoro', 'share', 'battery', 'network', 'calendar', 'todo', 'notifications', 'devices']</default>
       <summary>Widgets shown in the notch</summary>
     </key>
     <key name="collapse-delay-ms" type="u">
@@ -70,6 +70,14 @@
     <key name="prayer-offsets" type="ai">
       <default>[0, 0, 0, 0, 0, 0]</default>
       <summary>Minute adjustments for Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha</summary>
+    </key>
+    <key name="whatsapp-port" type="u">
+      <default>53319</default>
+      <summary>Local port the Gnotch Chrome extension connects to</summary>
+    </key>
+    <key name="whatsapp-token" type="s">
+      <default>''</default>
+      <summary>Pairing token the Gnotch Chrome extension must send (generated on first use)</summary>
     </key>
   </schema>
 </schemalist>

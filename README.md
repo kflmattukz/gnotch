@@ -16,7 +16,7 @@ The notch is a black pill at the top of the screen. When nothing is happening it
 | Notifications | The last 30 notifications; click one to open it |
 | Drives | Mounted removable drives; click to open, ⏏ to eject |
 
-The notch peeks when a track changes, the charger is plugged in or unplugged, the battery drops below 20/10/5 %, a notification arrives (unless Do Not Disturb is on), a drive is mounted or ejected, or a Bluetooth device connects. It also peeks for prayer reminders and prayer times, at the end of each Pomodoro phase, and when files are sent or received.
+The notch peeks when a track changes, the charger is plugged in or unplugged, the battery drops below 20/10/5 %, a notification arrives (unless Do Not Disturb is on), a drive is mounted or ejected, or a Bluetooth device connects. WhatsApp Web in Chrome gets its own peeks: messages show the sender's photo and text, and incoming calls can be accepted or declined from the notch (allow notifications for web.whatsapp.com in Chrome). During a call the notch shows the caller, a running timer, a voice wave for each side and a hang-up button. GNOME's own banners for these are skipped. It also peeks for prayer reminders and prayer times, at the end of each Pomodoro phase, and when files are sent or received.
 
 Look: Gnotch reuses GNOME Shell's own widgets (Quick Settings toggles, the date menu calendar, message-list notification rows, check boxes, the OSD level bar, switches) and the Shell's dark palette with your accent colour, so it reads as part of the top bar in both light and dark mode.
 
@@ -65,6 +65,19 @@ src/widgets/*.js        media, prayer, pomodoro, share, battery, network, calend
 src/praytimes.js        prayer time calculation (PrayTimes.org algorithm)
 src/localsend.js        LocalSend v2 device: discovery, sending, HTTPS receiver on port 53317
 helper/gnotch-drop.js   GTK file chooser for the Share tab's "Add files…" (drops are read from the DND selection)
+src/widgets/whatsapp.js WhatsApp Web peeks and calls (from Chrome's notifications)
+src/callaudio.js        notices calls from Chrome's microphone stream; voice levels via parec
+src/whatsapp-bridge.js  local WebSocket the Chrome extension pairs with (127.0.0.1, token)
+chrome-extension/       companion Chrome extension: presses WhatsApp Web's buttons (hang up)
 ```
 
 Each widget exposes an optional `page` (an expanded tab), `compactLeft`/`compactRight` with `wantsCompact()` (to own the pill), and `destroy()`. It calls `notch.peek({...})` for events and `notch.updateCompact()` when its state changes.
+
+## WhatsApp hang-up (Chrome extension)
+
+The hang-up button needs the companion extension, because the call runs inside the WhatsApp Web tab:
+
+1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the `chrome-extension` folder of this repository (after an update, click its reload button).
+2. The notch asks **Pair the Gnotch Chrome extension?** Accept it. That's all; the token is exchanged for you.
+
+The extension also tells the notch when WhatsApp's call screen closes, so the call view ends exactly with the call. Pairing by hand still works: copy the token from Gnotch preferences → WhatsApp into the extension's options.

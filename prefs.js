@@ -1,11 +1,13 @@
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 const WIDGETS = [
     ['media', 'Media', 'Music and video playing in any app'],
+    ['whatsapp', 'WhatsApp', 'Messages and calls from WhatsApp Web in Chrome'],
     ['prayer', 'Prayer times', 'Daily prayer times with reminders'],
     ['pomodoro', 'Pomodoro', 'Focus timer with breaks'],
     ['share', 'Share', 'Send and receive files with LocalSend, using the LocalSend app\'s device name (keep the app closed)'],
@@ -193,5 +195,29 @@ export default class GnotchPreferences extends ExtensionPreferences {
         prayer.add(stringCombo(settings, 'prayer-asr', 'Asr', ASR_METHODS));
         prayer.add(spinRow(settings, 'prayer-reminder-min', 'Reminder',
             'Minutes before each prayer (0 turns it off)', 0, 60, 1));
+
+        const whatsapp = new Adw.PreferencesGroup({
+            title: 'WhatsApp',
+            description: 'Load the chrome-extension folder from the Gnotch sources in Chrome (chrome://extensions, Developer mode, Load unpacked) and accept the pairing prompt in the notch. It lets the notch hang up calls. The token below is only needed to pair by hand.',
+        });
+        page.add(whatsapp);
+        const token = new Adw.ActionRow({
+            title: 'Pairing token',
+            subtitle: settings.get_string('whatsapp-token') || 'Created when Gnotch first runs',
+            subtitle_selectable: true,
+        });
+        settings.connect('changed::whatsapp-token', () => {
+            token.subtitle = settings.get_string('whatsapp-token');
+        });
+        const copy = new Gtk.Button({icon_name: 'edit-copy-symbolic', valign: Gtk.Align.CENTER, tooltip_text: 'Copy'});
+        copy.add_css_class('flat');
+        copy.connect('clicked', () => copy.get_clipboard().set(settings.get_string('whatsapp-token')));
+        const regenerate = new Gtk.Button({icon_name: 'view-refresh-symbolic', valign: Gtk.Align.CENTER, tooltip_text: 'New token (unpairs the extension)'});
+        regenerate.add_css_class('flat');
+        regenerate.connect('clicked', () => settings.set_string('whatsapp-token', GLib.uuid_string_random()));
+        token.add_suffix(copy);
+        token.add_suffix(regenerate);
+        whatsapp.add(token);
+        whatsapp.add(spinRow(settings, 'whatsapp-port', 'Port', 'The extension connects to 127.0.0.1 on this port', 1024, 65535, 1));
     }
 }

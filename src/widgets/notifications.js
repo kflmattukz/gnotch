@@ -68,7 +68,8 @@ export class NotificationsWidget {
         }
         this._sync();
 
-        if (isNew && this._desktopSettings.get_boolean('show-banners')) {
+        if (isNew && this._desktopSettings.get_boolean('show-banners') &&
+            !this._notch.claimsNotification(source, notification)) {
             this._notch.peek({
                 gicon: notification.gicon ?? source.icon,
                 title: notification.title || source.title,
