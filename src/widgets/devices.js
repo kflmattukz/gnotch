@@ -1,8 +1,14 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import St from 'gi://St';
 
 import * as Anim from '../anim.js';
+
+Gio._promisify(Gio.File.prototype, 'query_filesystem_info_async');
+
+const DISK_CHECK_SECONDS = 10 * 60;
+const DISK_FULL = 0.9; // smart info: peek above this share used
 
 export class DevicesWidget {
     constructor(notch) {
@@ -36,6 +42,43 @@ export class DevicesWidget {
             'mount-changed', () => this._sync(),
             this);
         this._sync();
+
+        this._diskCancellable = new Gio.Cancellable();
+        this._checkDisk();
+        this._diskId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, DISK_CHECK_SECONDS, () => {
+            this._checkDisk();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    /** Smart info: the home drive almost full, at most once a day. */
+    async _checkDisk() {
+        if (!this._notch.settings.get_boolean('smart-info'))
+            return;
+        // shortcut: once-a-day memory resets when the Shell restarts; persist in settings if that nags
+        const today = new Date().toDateString();
+        if (this._diskWarnedDay === today)
+            return;
+        let info;
+        try {
+            info = await Gio.File.new_for_path(GLib.get_home_dir()).query_filesystem_info_async(
+                'filesystem::free,filesystem::size', GLib.PRIORITY_LOW, this._diskCancellable);
+        } catch (e) {
+            if (!e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                console.debug(`gnotch: disk space: ${e.message}`);
+            return;
+        }
+        const size = info.get_attribute_uint64('filesystem::size');
+        const free = info.get_attribute_uint64('filesystem::free');
+        if (!size || 1 - free / size <= DISK_FULL)
+            return;
+        this._diskWarnedDay = today;
+        this._notch.peek({
+            iconName: 'drive-harddisk-symbolic',
+            title: 'Home drive almost full',
+            body: `${GLib.format_size(free)} left`,
+            widget: this,
+        });
     }
 
     _isUserMount(mount) {
@@ -130,6 +173,11 @@ export class DevicesWidget {
     }
 
     destroy() {
+        this._diskCancellable.cancel();
+        this._diskCancellable = null;
+        if (this._diskId)
+            GLib.source_remove(this._diskId);
+        this._diskId = 0;
         this._rows.clear();
         this._monitor.disconnectObject(this);
         this._monitor = null;

@@ -152,6 +152,13 @@ export default class GnotchPreferences extends ExtensionPreferences {
         glow.bind_property('active', glowHover, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
         behavior.add(glowHover);
 
+        const smartInfo = new Adw.SwitchRow({
+            title: 'Smart info',
+            subtitle: 'Meetings starting soon, battery time left, low disk space and break reminders',
+        });
+        settings.bind('smart-info', smartInfo, 'active', Gio.SettingsBindFlags.DEFAULT);
+        behavior.add(smartInfo);
+
         const spins = [
             ['collapse-delay-ms', 'Collapse delay', 'Milliseconds before collapsing after the pointer leaves', 0, 3000, 50],
             ['peek-duration-ms', 'Peek duration', 'How long track changes and alerts stay visible', 500, 10000, 250],

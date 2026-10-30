@@ -13,6 +13,10 @@ const PHASES = {
     long: {title: 'Long break', key: 'pomodoro-long-min', icon: 'emoji-nature-symbolic'},
 };
 
+// Smart info: nudge after this much activity; this long away from the keyboard and mouse resets it
+const SESSION_MINUTES = 90;
+const IDLE_RESET_MS = 5 * 60 * 1000;
+
 function formatClock(seconds) {
     const s = Math.max(0, Math.ceil(seconds));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -71,6 +75,47 @@ export class PomodoroWidget {
             this._sync();
         }, this);
         this._sync();
+
+        this._idleMonitor = global.backend.get_core_idle_monitor();
+        this._idleWatchId = this._idleMonitor.add_idle_watch(IDLE_RESET_MS, () => this._onIdle());
+        this._activeWatchId = 0;
+        this._sessionId = 0;
+        this._startSession(); // the user is active when the extension starts
+    }
+
+    // ---- long-session break ----
+
+    _startSession() {
+        this._stopSession();
+        this._sessionId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, SESSION_MINUTES * 60, () => {
+            this._sessionId = 0;
+            if (!this._started && this._settings.get_boolean('smart-info')) {
+                this._notch.peek({
+                    iconName: PHASES.short.icon,
+                    title: 'Time for a break',
+                    body: `You've been at it for ${SESSION_MINUTES} min`,
+                    widget: this,
+                });
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _stopSession() {
+        if (this._sessionId)
+            GLib.source_remove(this._sessionId);
+        this._sessionId = 0;
+    }
+
+    _onIdle() {
+        // Away long enough: the next activity starts a fresh session
+        this._stopSession();
+        if (!this._activeWatchId) {
+            this._activeWatchId = this._idleMonitor.add_user_active_watch(() => {
+                this._activeWatchId = 0; // a user-active watch fires once
+                this._startSession();
+            });
+        }
     }
 
     _button(iconName, callback, extra = '') {
@@ -212,6 +257,11 @@ export class PomodoroWidget {
 
     destroy() {
         this._stopTick();
+        this._stopSession();
+        this._idleMonitor.remove_watch(this._idleWatchId);
+        if (this._activeWatchId)
+            this._idleMonitor.remove_watch(this._activeWatchId);
+        this._idleMonitor = null;
         this._settings.disconnectObject(this);
     }
 }

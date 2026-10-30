@@ -1,4 +1,5 @@
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
@@ -7,6 +8,7 @@ import {Calendar, DBusEventSource} from 'resource:///org/gnome/shell/ui/calendar
 import * as Anim from '../anim.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MEETING_LEAD_MS = 5 * 60 * 1000; // smart info: peek this long before a timed event
 
 function startOfDay(date) {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -52,6 +54,35 @@ export class CalendarWidget {
         this.page.add_child(events);
 
         this._showEvents(false);
+
+        this._notified = new Set(); // event ids already announced
+        this._meetingId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 60, () => {
+            this._checkMeetings();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    /** Smart info: a timed event starting within MEETING_LEAD_MS. */
+    _checkMeetings() {
+        if (!this._notch.settings.get_boolean('smart-info'))
+            return;
+        const now = new Date();
+        const soon = new Date(now.getTime() + MEETING_LEAD_MS);
+        const day = startOfDay(now);
+        const dayEnd = new Date(day.getTime() + DAY_MS);
+        for (const event of this._source.getEvents(now, soon)) {
+            const allDay = event.date <= day && event.end >= dayEnd;
+            if (allDay || event.date <= now || event.date > soon || this._notified.has(event.id))
+                continue;
+            this._notified.add(event.id);
+            this._notch.peek({
+                key: `meeting:${event.id}`,
+                iconName: 'x-office-calendar-symbolic',
+                title: event.summary || 'Event',
+                body: `Starts at ${event.date.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'})}`,
+                widget: this,
+            });
+        }
     }
 
     onShown() {
@@ -98,6 +129,9 @@ export class CalendarWidget {
     }
 
     destroy() {
+        if (this._meetingId)
+            GLib.source_remove(this._meetingId);
+        this._meetingId = 0;
         this._calendar.disconnectObject(this);
         this._source.disconnectObject(this);
         this._source.destroy();

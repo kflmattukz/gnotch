@@ -594,6 +594,7 @@ export class Notch {
      * @param {boolean} [p.sticky] - stays until updated or ended (endPeek)
      * @param {boolean} [p.force] - closes the open notch to show it
      * @param {Clutter.Actor} [p.extra] - the widget's own content, before the buttons (it stays the widget's)
+     * @param {object} [p.widget] - clicking the peek opens this widget's tab
      * @returns {boolean} whether the notch shows it
      */
     peek(p) {
@@ -888,11 +889,11 @@ export class Notch {
     }
 
     expand() {
+        // A clicked peek opens its widget's tab; so does a widget waiting on an answer (e.g. an incoming file)
+        const focus = this._currentPeek?.widget ?? [...this._widgets.values()].find(w => w.wantsFocus?.());
         this._cancel('peek');
         this._peekQueue = [];
         this._currentPeek = null;
-        // A widget waiting on an answer (e.g. an incoming file) opens on its own tab
-        const focus = [...this._widgets.values()].find(w => w.wantsFocus?.());
         if (focus)
             this.selectWidget(focus);
         this._setState('expanded');

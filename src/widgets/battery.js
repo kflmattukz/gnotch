@@ -12,6 +12,7 @@ import * as Anim from '../anim.js';
 const DeviceProxy = Gio.DBusProxy.makeProxyWrapper(loadInterfaceXML('org.freedesktop.UPower.Device'));
 
 const LOW_LEVELS = [20, 10, 5];
+const TIME_LEFT_WARN_S = 3600; // smart info: once per discharge under this
 
 function formatDuration(seconds) {
     const hours = Math.floor(seconds / 3600);
@@ -24,6 +25,7 @@ export class BatteryWidget {
         this._notch = notch;
         this._lastState = null;
         this._lastLowLevel = 100;
+        this._warnedTime = false;
 
         // Layers: outer Bin (shown/hidden by the notch) > breathing Bin > icon/label (swaps)
         this._miniIcon = new St.Icon({icon_size: 16, style_class: 'gnotch-battery-icon'});
@@ -129,7 +131,15 @@ export class BatteryWidget {
 
         if (charging) {
             this._lastLowLevel = 100;
+            this._warnedTime = false;
         } else {
+            if (!this._warnedTime && p.TimeToEmpty > 0 && p.TimeToEmpty < TIME_LEFT_WARN_S &&
+                this._notch.settings.get_boolean('smart-info')) {
+                this._warnedTime = true;
+                const at = new Date(Date.now() + p.TimeToEmpty * 1000)
+                    .toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'});
+                this._notch.peek({gicon, title: `Battery runs out ~${at}`, body: `${formatDuration(p.TimeToEmpty)} left`, widget: this});
+            }
             const level = LOW_LEVELS.findLast(l => percent <= l);
             if (level !== undefined && level < this._lastLowLevel) {
                 this._lastLowLevel = level;

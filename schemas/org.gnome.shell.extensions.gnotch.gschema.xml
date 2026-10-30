@@ -30,6 +30,10 @@
       <default>true</default>
       <summary>Light up the edge nearest the pointer as it approaches the notch</summary>
     </key>
+    <key name="smart-info" type="b">
+      <default>true</default>
+      <summary>Peek for meetings starting soon, battery time left, low disk space and break reminders</summary>
+    </key>
     <key name="hide-clock" type="b">
       <default>true</default>
       <summary>Hide the top bar clock (the idle notch shows the time instead)</summary>
