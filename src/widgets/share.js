@@ -248,7 +248,7 @@ export class ShareWidget {
             try {
                 info = await file.query_info_async(attrs, Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, null);
             } catch (e) {
-                console.warn(`gnotch: can't share ${path}: ${e.message}`);
+                console.debug(`gnotch: can't share ${path}: ${e.message}`);
                 continue;
             }
             if (!this._filesList)
@@ -677,7 +677,7 @@ export class ShareWidget {
         if (!dropped || !this._filesList)
             return;
         if (!paths?.length) {
-            console.warn('gnotch: files were dropped on the notch but no file paths came with them');
+            console.debug('gnotch: files were dropped on the notch but no file paths came with them');
             Anim.shake(this._filesEmpty);
             return;
         }
@@ -736,7 +736,7 @@ export class ShareWidget {
         try {
             this._stdin?.write_all(new TextEncoder().encode(`${cmd}\n`), null);
         } catch (e) {
-            console.warn(`gnotch: file chooser helper: ${e.message}`);
+            console.debug(`gnotch: file chooser helper: ${e.message}`);
         }
     }
 

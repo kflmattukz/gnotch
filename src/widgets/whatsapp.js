@@ -74,6 +74,8 @@ class VoiceWave {
 
     destroy() {
         this.actor.destroy();
+        this.actor = null;
+        this._bars = null;
     }
 }
 
@@ -510,6 +512,8 @@ export class WhatsAppWidget {
             source.disconnectObject(this);
         if (this._call) {
             GLib.source_remove(this._call.timerId);
+            this._call.theirs.destroy();
+            this._call.mine.destroy();
             this._call.waves.destroy();
             this._call = null;
         }

@@ -155,19 +155,28 @@ class IncomingSession {
             return GLib.SOURCE_REMOVE;
         });
         // The sender gave up while we were still asking
-        msg.connect('disconnected', () => {
+        this._disconnectedId = msg.connect('disconnected', () => {
             if (this.state === 'pending')
                 this._end('cancelled');
         });
     }
 
-    _answer(status, body) {
+    /** Lets go of the request message and the answer timeout. */
+    _release() {
         if (this._timeoutId)
             GLib.source_remove(this._timeoutId);
         this._timeoutId = 0;
-        this._device._respond(this._msg, status, body);
-        this._msg.unpause();
+        if (this._disconnectedId)
+            this._msg?.disconnect(this._disconnectedId);
+        this._disconnectedId = 0;
         this._msg = null;
+    }
+
+    _answer(status, body) {
+        const msg = this._msg;
+        this._release();
+        this._device._respond(msg, status, body);
+        msg.unpause();
     }
 
     accept() {
@@ -213,9 +222,7 @@ class IncomingSession {
     }
 
     _end(state) {
-        if (this._timeoutId)
-            GLib.source_remove(this._timeoutId);
-        this._timeoutId = 0;
+        this._release();
         this.state = state;
         for (const upload of this._uploads)
             upload.abort();
@@ -393,7 +400,7 @@ export class LocalSend extends Signals.EventEmitter {
         try {
             upload.stream = part.replace(null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
         } catch (e) {
-            console.warn(`gnotch: LocalSend: can't write ${part.get_path()}: ${e.message}`);
+            console.debug(`gnotch: LocalSend: can't write ${part.get_path()}: ${e.message}`);
             upload.failed = true;
         }
 
@@ -406,7 +413,7 @@ export class LocalSend extends Signals.EventEmitter {
                 session.received += chunk.get_size();
                 this.emit('session-changed', session);
             }).catch(e => {
-                console.warn(`gnotch: LocalSend: writing ${info.fileName}: ${e.message}`);
+                console.debug(`gnotch: LocalSend: writing ${info.fileName}: ${e.message}`);
                 upload.failed = true;
             }).finally(() => msg.unpause());
         });
@@ -448,7 +455,7 @@ export class LocalSend extends Signals.EventEmitter {
             this._respond(msg, 200, {});
             session._fileDone(upload.info.id, target);
         }).catch(e => {
-            console.warn(`gnotch: LocalSend: saving ${upload.info.fileName}: ${e.message}`);
+            console.debug(`gnotch: LocalSend: saving ${upload.info.fileName}: ${e.message}`);
             upload.abort();
             this._respond(msg, 500, {message: 'Could not save the file'});
         }).finally(() => msg.unpause());
@@ -505,7 +512,7 @@ export class LocalSend extends Signals.EventEmitter {
         try {
             this._socket?.send_to(this._group, encoder.encode(JSON.stringify(body)), null);
         } catch (e) {
-            console.warn(`gnotch: LocalSend announce: ${e.message}`);
+            console.debug(`gnotch: LocalSend announce: ${e.message}`);
         }
     }
 
@@ -583,7 +590,7 @@ export class LocalSend extends Signals.EventEmitter {
         } catch (e) {
             if (cancellable?.is_cancelled())
                 throw e;
-            console.warn(`gnotch: LocalSend: sending to ${peer.alias} (${peer.ip}:${peer.port}): ${e.message}`);
+            console.debug(`gnotch: LocalSend: sending to ${peer.alias} (${peer.ip}:${peer.port}): ${e.message}`);
             throw e instanceof LocalSendError ? e : new LocalSendError('failed', e.message);
         }
     }
