@@ -22,6 +22,19 @@ Gio._promisify(NM.DeviceWifi.prototype, 'request_scan_async');
 const MAX_NETWORKS = 20;
 const {ACTIVATED, FAILED, PREPARE, SECONDARIES} = NM.DeviceState;
 
+// One NM.Client for the life of the Shell, kept across disable/enable (every
+// screen lock). A dropped client is disposed whenever GC runs, and libnm
+// crashes the whole Shell if D-Bus updates for it are still in flight.
+let clientPromise = null;
+
+function getClient() {
+    clientPromise ??= NM.Client.new_async(null).catch(e => {
+        clientPromise = null;
+        throw e;
+    });
+    return clientPromise;
+}
+
 function signalIcon(strength) {
     if (strength > 80)
         return 'network-wireless-signal-excellent-symbolic';
@@ -262,7 +275,10 @@ export class NetworkWidget {
     // ---- Wi-Fi state ----
 
     async _initWifi() {
-        this._client = await NM.Client.new_async(this._cancellable);
+        const client = await getClient();
+        if (this._cancellable.is_cancelled())
+            return;
+        this._client = client;
         this._client.connectObject(
             'notify::wireless-enabled', () => this._syncWifi(),
             'notify::primary-connection', () => this._syncWifi(),
