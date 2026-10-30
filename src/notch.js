@@ -210,14 +210,14 @@ export class Notch {
             layout_manager: new Clutter.BinLayout(),
             x_expand: true,
         });
-        this._clockLabel = new St.Label({
+        this._clock = new Anim.MorphText({
             style_class: 'gnotch-clock',
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
-        // Minute rolls animate the label; showing/hiding animates this wrapper
+        // Changed digits morph in the clock; showing/hiding animates this wrapper
         this._clockBin = new St.Bin({
-            child: this._clockLabel,
+            child: this._clock.actor,
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -230,9 +230,10 @@ export class Notch {
         this._pill.add_child(this._compact);
 
         this._wallClock = new GnomeDesktop.WallClock({time_only: true});
-        this._wallClock.connectObject('notify::clock',
-            () => Anim.swapText(this._clockLabel, this._wallClock.clock, {dy: 8}), this);
-        this._clockLabel.text = this._wallClock.clock;
+        this._wallClock.connectObject('notify::clock', () => {
+            this._clock.text = this._wallClock.clock;
+        }, this);
+        this._clock.text = this._wallClock.clock;
     }
 
     _buildPeek() {

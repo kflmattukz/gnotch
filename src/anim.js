@@ -210,6 +210,63 @@ export function swapText(label, text, {dy = 6} = {}) {
     });
 }
 
+/**
+ * Text whose changed characters morph in place: the old glyph shrinks and
+ * fades while the new one settles in from slightly larger, so a clock's
+ * minute turns over without the hour moving.
+ */
+export class MorphText {
+    constructor(params) {
+        this.actor = new St.BoxLayout(params);
+        this._text = '';
+    }
+
+    get text() {
+        return this._text;
+    }
+
+    set text(text) {
+        if (text === this._text)
+            return;
+        const old = [...this._text];
+        const chars = [...text];
+        this._text = text;
+        const slots = this.actor.get_children();
+        if (!this.actor.mapped || !animationsEnabled() || old.length !== chars.length) {
+            this.actor.destroy_all_children();
+            for (const c of chars) {
+                const slot = new St.Widget({layout_manager: new Clutter.BinLayout(), y_align: Clutter.ActorAlign.CENTER});
+                slot.add_child(new St.Label({text: c}));
+                this.actor.add_child(slot);
+            }
+            return;
+        }
+        chars.forEach((c, i) => {
+            if (c !== old[i])
+                this._morph(slots[i], c);
+        });
+    }
+
+    _morph(slot, c) {
+        for (const label of slot.get_children()) {
+            label.remove_all_transitions();
+            label.set_pivot_point(0.5, 0.5);
+            label.ease({
+                opacity: 0,
+                scale_x: 0.8,
+                scale_y: 0.8,
+                duration: 280,
+                mode: EASE_IN_QUAD,
+                onComplete: () => label.destroy(),
+            });
+        }
+        const label = new St.Label({text: c, opacity: 0, scale_x: 1.2, scale_y: 1.2});
+        label.set_pivot_point(0.5, 0.5);
+        slot.add_child(label);
+        label.ease({opacity: 255, scale_x: 1, scale_y: 1, duration: 320, mode: EASE_OUT_QUAD});
+    }
+}
+
 const pendingIcon = new WeakMap();
 
 function sameIcon(icon, props) {
