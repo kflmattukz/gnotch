@@ -26,12 +26,26 @@ const FLASH_MS = 450;
 const RELEASE_MS = 300;
 const HOLD = 0.28; // the soft glow while a peek shows
 const BREATH = 0.08;
+const INTENSITY = 0.5; // overall strength: the edge should hint, not shine
 
-// GNOME's accent colours (libadwaita)
-const ACCENTS = {
-    BLUE: '#3584e4', TEAL: '#2190a4', GREEN: '#3a944a', YELLOW: '#c88800', ORANGE: '#ed5b00',
-    RED: '#e62d42', PINK: '#d56199', PURPLE: '#9141ac', SLATE: '#6f8396',
-};
+const WHITE = [1, 1, 1]; // the pointer glow and events without a colour of their own
+
+// What a peek is about, strongest hints first: the app or icon says more
+// than the words. Colours are GNOME's palette, light enough to glow.
+const KINDS = [
+    {color: '#f66151', app: /dialog-(error|warning)|battery-(caution|low|empty)/,
+        text: /\b(error|fail(ed|ure)?|warning|can'?t|couldn'?t|unable|denied|critical|low battery)\b/},
+    {color: '#57e389', app: /\bcalls?\b|phone|call-(start|incoming)/,
+        text: /\b(incoming|missed) (video )?call\b|\bcalling\b/},
+    {color: '#62a0ea', app: /mail|chat|message|telegram|signal-desktop|org\.signal|whatsapp|discord|slack|fractal|element|geary|thunderbird|evolution|polari|chatty/,
+        text: /\b(new )?(message|mail|email|reply|mentioned)\b/},
+    {color: '#f6d32d', app: /calendar|clock|alarm|reminder|timer|appointment/,
+        text: /\b(reminder|meeting|event|alarm|timer|appointment|starts? (in|at)|due)\b/},
+    {color: '#c061cb', app: /software|update|package|flatpak|dnf|discover/,
+        text: /\b(updates?|upgrade)( available| ready)?\b/},
+    {color: '#57e389', app: /emblem-ok|object-select|download-done/,
+        text: /\b(complete[d]?|finished|done|downloaded|installed|saved|sent|received|safe to remove)\b/},
+];
 
 /** '#rrggbb' as [r, g, b] (0..1). */
 export function rgb(hex) {
@@ -39,11 +53,24 @@ export function rgb(hex) {
     return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
 }
 
-/** The user's accent colour as [r, g, b] (0..1). */
-export function accentColor() {
-    const value = St.Settings.get().accent_color;
-    const name = Object.keys(St.SystemAccentColor).find(k => St.SystemAccentColor[k] === value);
-    return rgb(ACCENTS[name] ?? ACCENTS.BLUE);
+/**
+ * A glow colour for what a peek is about, or null (white) when unsure.
+ *
+ * @param {object} hints
+ * @param {string} [hints.app] - app or source id
+ * @param {string} [hints.icon] - icon name
+ * @param {string} [hints.title]
+ * @param {string} [hints.body]
+ * @param {boolean} [hints.critical] - a critical notification
+ * @returns {number[]|null} [r, g, b] 0..1
+ */
+export function glowColorFor({app = '', icon = '', title = '', body = '', critical = false}) {
+    if (critical)
+        return rgb(KINDS[0].color);
+    const source = `${app} ${icon}`.toLowerCase();
+    const text = `${title} ${body}`.toLowerCase();
+    const kind = KINDS.find(k => k.app.test(source)) ?? KINDS.find(k => k.text.test(text));
+    return kind ? rgb(kind.color) : null;
 }
 
 const easeInOut = t => t < 0.5 ? 4 * t ** 3 : 1 - (2 - 2 * t) ** 3 / 2;
@@ -54,7 +81,6 @@ export class Glow {
         this.actor.connect('repaint', area => this._paint(area));
         this.enabled = true;
         this.hoverEnabled = true;
-        this._accent = accentColor();
         this._shape = null; // {x, width, height, radius}, x in the notch container
         this._samples = []; // [{x, y, s}] along the edge, s in 0..1
         this._length = 0;
@@ -62,9 +88,6 @@ export class Glow {
         this._hover = {target: 0, value: 0, s: 0.5};
         this._lastFrame = 0;
 
-        St.Settings.get().connectObject('notify::accent-color', () => {
-            this._accent = accentColor();
-        }, this);
         this._timeline = new Clutter.Timeline({actor: this.actor, duration: 1000, repeat_count: -1});
         this._timeline.connect('new-frame', () => this._frame());
     }
@@ -117,12 +140,12 @@ export class Glow {
      * Starts an event glow, replacing the current one.
      *
      * @param {string} kind - sweep, loop, pulse, flash or hold
-     * @param {number[]} [color] - [r, g, b] 0..1; the accent by default
+     * @param {number[]} [color] - [r, g, b] 0..1; white by default
      */
     play(kind, color = null) {
         if (!this.enabled)
             return;
-        this._event = {kind, color: color ?? this._accent, start: this._now(), releasedAt: 0};
+        this._event = {kind, color: color ?? WHITE, start: this._now(), releasedAt: 0};
         this._wake();
     }
 
@@ -282,9 +305,9 @@ export class Glow {
         const now = this._now();
         const hover = this._hover.value;
         const sigma = HOVER_SIGMA / Math.max(1, this._length);
-        const eventColor = this._event?.color ?? this._accent;
+        const eventColor = this._event?.color ?? WHITE;
 
-        // Brightness and colour mix (0 = accent hover, 1 = event colour) per sample
+        // Brightness and colour mix (0 = white hover, 1 = event colour) per sample
         const levels = this._samples.map(({s}) => {
             const h = hover > 0 ? hover * Math.exp(-0.5 * ((s - this._hover.s) / sigma) ** 2) : 0;
             const e = this._eventAt(s, now);
@@ -292,7 +315,7 @@ export class Glow {
             const mix = h + e > 0 ? e / (h + e) : 1;
             return {alpha: Math.round(alpha * LEVELS) / LEVELS, mix: Math.round(mix * 3) / 3};
         });
-        const colorOf = mix => this._accent.map((c, i) => c + (eventColor[i] - c) * mix);
+        const colorOf = mix => WHITE.map((c, i) => c + (eventColor[i] - c) * mix);
 
         const pass = (lineWidth, strength) => {
             // Drawn into a group with SOURCE: where neighbouring strokes
@@ -309,7 +332,7 @@ export class Glow {
                 const end = i === this._samples.length;
                 if (!end && levels[i].alpha === levels[start].alpha && levels[i].mix === levels[start].mix)
                     continue;
-                const alpha = levels[start].alpha * strength;
+                const alpha = levels[start].alpha * strength * INTENSITY;
                 if (alpha > 0.003) {
                     const [r, g, b] = colorOf(levels[start].mix);
                     cr.setSourceRGBA(r, g, b, alpha);
@@ -331,16 +354,15 @@ export class Glow {
         cr.rectangle(0, 0, width, height);
         this._pillPath(cr);
         cr.clip();
-        pass(28, 0.07);
-        pass(14, 0.16);
-        pass(6, 0.4);
+        pass(20, 0.06);
+        pass(10, 0.14);
+        pass(4, 0.35);
         cr.restore();
-        pass(2, 1);
+        pass(1.5, 1);
         cr.$dispose();
     }
 
     destroy() {
-        St.Settings.get().disconnectObject(this);
         this._timeline.stop();
         this._timeline = null;
         this.actor.destroy();

@@ -3,6 +3,7 @@ import Gio from 'gi://Gio';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import {NotificationMessage} from 'resource:///org/gnome/shell/ui/messageList.js';
 
 import * as Anim from '../anim.js';
@@ -74,6 +75,9 @@ export class NotificationsWidget {
                 gicon: notification.gicon ?? source.icon,
                 title: notification.title || source.title,
                 body: notification.body?.split('\n')[0] ?? '',
+                // Hints for the glow's colour
+                app: source.app?.get_id?.() ?? source.policy?.id ?? '',
+                critical: notification.urgency === MessageTray.Urgency.CRITICAL,
             });
         }
     }

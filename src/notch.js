@@ -11,7 +11,7 @@ import {BarLevel} from 'resource:///org/gnome/shell/ui/barLevel.js';
 import * as Anim from './anim.js';
 import {Cover} from './cover.js';
 import {Glass} from './glass.js';
-import {Glow, rgb} from './glow.js';
+import {Glow, glowColorFor, rgb} from './glow.js';
 import {MediaWidget} from './widgets/media.js';
 import {BatteryWidget} from './widgets/battery.js';
 import {NetworkWidget} from './widgets/network.js';
@@ -1077,7 +1077,20 @@ export class Notch {
         if (kind === false)
             this._glow.release();
         else
-            this._glow.play(kind, p.glowColor ? rgb(p.glowColor) : null);
+            this._glow.play(kind, p.glowColor ? rgb(p.glowColor) : this._smartGlowColor(p));
+    }
+
+    /** A colour for what the peek is about; none for music, whose titles are song names. */
+    _smartGlowColor(p) {
+        if (p.cover || p.key?.startsWith('osd:'))
+            return null;
+        return glowColorFor({
+            app: p.app,
+            icon: p.iconName ?? p.gicon?.to_string?.(),
+            title: p.title,
+            body: p.body,
+            critical: p.critical,
+        });
     }
 
     /** Hands the pointer to the glow, at most once per frame. */
