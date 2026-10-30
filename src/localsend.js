@@ -161,8 +161,8 @@ class IncomingSession {
         });
     }
 
-    /** Lets go of the request message and the answer timeout. */
-    _release() {
+    /** Lets go of the request message and the answer timeout; safe to repeat. */
+    destroy() {
         if (this._timeoutId)
             GLib.source_remove(this._timeoutId);
         this._timeoutId = 0;
@@ -174,7 +174,7 @@ class IncomingSession {
 
     _answer(status, body) {
         const msg = this._msg;
-        this._release();
+        this.destroy();
         this._device._respond(msg, status, body);
         msg.unpause();
     }
@@ -222,7 +222,7 @@ class IncomingSession {
     }
 
     _end(state) {
-        this._release();
+        this.destroy();
         this.state = state;
         for (const upload of this._uploads)
             upload.abort();
