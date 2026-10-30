@@ -5,9 +5,28 @@
  * gnome-shell-dark.css) with the system accent. Most widgets are Shell's own
  * (QuickToggle, Calendar, NotificationMessage, CheckBox, Switch, BarLevel);
  * the rules below pin their colours to the dark palette and make their fills
- * translucent so Blur my Shell's glass shows through. Size, position and
- * corner radius of the pill are driven by springs in notch.js.
+ * translucent so Blur my Shell's glass shows through.
+ *
+ * Layers (notch.js): .gnotch holds the drawer (peek card / open panel),
+ * the split-island bubble and the pill on top. Size, position, corner radii,
+ * the pill's colour (black, header grey while open) and the drawer's ambient
+ * tint are driven by springs in notch.js, as inline styles.
  */
+
+/* ---- top bar islands (islands.js) ----
+ * The bar goes transparent; its left and right boxes become capsules the
+ * height of the notch (26px in the 32px bar), and the bar turns solid again
+ * while a window touches it.
+ */
+#panel.gnotch-islands { background-color: transparent; transition-duration: 250ms; }
+#panel.gnotch-islands.gnotch-islands-solid { background-color: #000000; }
+#panel.gnotch-islands #panelLeft,
+#panel.gnotch-islands #panelRight {
+    margin: 3px 6px;
+    padding: 0 2px;
+    border-radius: 999px;
+    background-color: #000000;
+}
 
 /* ---- palette (dark Shell, on glass) ----
  * text #ffffff, dim rgba(255,255,255,0.7), faint rgba(255,255,255,0.5)
@@ -26,6 +45,16 @@
     padding: 12px;
 }
 
+/* ---- surfaces ---- */
+.gnotch-bubble { background-color: #000000; padding: 0 9px; }
+
+/* a raised surface inside the panel: one radius, a hairline edge */
+.gnotch-card {
+    border-radius: 20px;
+    background-color: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
 /* ---- compact pill ---- */
 .gnotch-compact { padding: 0 14px; spacing: 12px; }
 
@@ -33,6 +62,29 @@
     font-weight: bold;
     font-feature-settings: "tnum";
 }
+
+/* status glyphs at the pill's ends: readable at a glance, quieter than the clock */
+.gnotch-status { spacing: 6px; }
+.gnotch-status-icon { color: rgba(255, 255, 255, 0.8); }
+.gnotch-status-icon.charging { color: #2ec27e; }
+.gnotch-status-icon.low { color: #f66151; }
+/* privacy light: an app is recording from the microphone */
+.gnotch-status-mic { width: 8px; height: 8px; border-radius: 4px; background-color: #ffa348; }
+.gnotch-status-badge {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    font-size: 0.727em;
+    font-weight: bold;
+    font-feature-settings: "tnum";
+    text-align: center;
+    color: -st-accent-fg-color;
+    background-color: -st-accent-color;
+}
+
+/* startup: apps pop in as they open */
+.gnotch-startup-icons { spacing: 4px; }
 
 .gnotch-compact-title {
     font-size: 0.909em;
@@ -80,20 +132,29 @@
 }
 
 /* ---- expanded ---- */
-/* padding must match EXPANDED_PADDING in notch.js */
-.gnotch-expanded { spacing: 12px; padding: 8px 18px 16px; }
+/* padding must match EXPANDED_PADDING in notch.js: the top leaves room for the pill (3 + 26 + 13) */
+.gnotch-expanded { spacing: 14px; padding: 42px 18px 16px; }
 
-.gnotch-tabs { spacing: 6px; }
+/* tabs: a segmented control on its own row below the pill */
+.gnotch-tabs {
+    spacing: 2px;
+    padding: 3px;
+    border-radius: 999px;
+    background-color: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
 .gnotch-tab-indicator { border-radius: 999px; background-color: -st-accent-color; }
-.gnotch .gnotch-tab {
+.gnotch .icon-button.gnotch-tab {
     padding: 6px 12px;
     color: rgba(255, 255, 255, 0.7);
     background-color: transparent;
     transition-duration: 200ms;
 }
-.gnotch .gnotch-tab:hover { color: #ffffff; background-color: rgba(255, 255, 255, 0.1); }
-.gnotch .gnotch-tab:checked,
-.gnotch .gnotch-tab:checked:hover { color: -st-accent-fg-color; background-color: transparent; }
+/* more specific than the Shell button rules below: the tabs sit flat in the row */
+.gnotch .icon-button.gnotch-tab:hover { color: #ffffff; background-color: rgba(255, 255, 255, 0.1); }
+.gnotch .icon-button.gnotch-tab:active { background-color: rgba(255, 255, 255, 0.15); }
+.gnotch .icon-button.gnotch-tab:checked,
+.gnotch .icon-button.gnotch-tab:checked:hover { color: -st-accent-fg-color; background-color: transparent; }
 .gnotch .gnotch-tab StIcon { icon-size: 16px; }
 
 .gnotch-page { spacing: 12px; }
@@ -102,7 +163,14 @@
 .gnotch-list { spacing: 6px; }
 
 /* ---- home ---- */
-.gnotch-home { spacing: 18px; }
+.gnotch-home { spacing: 12px; }
+/* the now-playing card on Home */
+.gnotch-home > .gnotch-media {
+    padding: 10px;
+    border-radius: 24px;
+    background-color: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
 .gnotch-divider { width: 1px; margin: 6px 0; background-color: rgba(255, 255, 255, 0.1); }
 
 /* ---- Shell buttons, on glass ---- */
@@ -278,8 +346,9 @@
 .gnotch-prayer {
     spacing: 2px;
     padding: 12px 6px;
-    border-radius: 12px;
-    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    background-color: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 .gnotch-prayer-name { font-size: 0.818em; color: rgba(255, 255, 255, 0.7); }
 .gnotch-prayer-time { font-weight: bold; font-size: 1.091em; font-feature-settings: "tnum"; }
@@ -311,8 +380,9 @@
 .gnotch-share-incoming {
     spacing: 9px;
     padding: 12px;
-    border-radius: 16px;
-    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    background-color: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 .gnotch-share-incoming-top { spacing: 12px; }
 .gnotch-share-incoming-buttons { spacing: 6px; }
@@ -346,3 +416,8 @@
 .gnotch-wave.mine .gnotch-wave-bar { background-color: -st-accent-color; }
 .gnotch-call-icon { color: #57e389; }
 .gnotch-call-mini { font-weight: bold; font-feature-settings: "tnum"; color: #57e389; }
+
+/* ---- shelf ---- */
+.gnotch-row.gnotch-card { border-radius: 16px; padding: 3px 6px 3px 3px; }
+.gnotch-shelf-icon { color: -st-accent-color; }
+.gnotch-shelf-count { font-feature-settings: "tnum"; }

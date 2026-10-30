@@ -16,6 +16,12 @@ export class NotificationsWidget {
         this._items = []; // newest first
         this.tabIcon = 'preferences-system-notifications-symbolic';
         this._desktopSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.notifications'});
+        this._unread = 0; // arrived since the tab was last opened
+
+        // Status glyphs: an unread count, and a moon while Do Not Disturb is on
+        this._badge = new St.Label({style_class: 'gnotch-status-badge', y_align: Clutter.ActorAlign.CENTER});
+        this._dnd = new St.Icon({icon_name: 'notifications-disabled-symbolic', icon_size: 14, style_class: 'gnotch-status-icon'});
+        this._desktopSettings.connectObject('changed::show-banners', () => this._syncStatus(), this);
 
         this.page = new St.BoxLayout({
             style_class: 'gnotch-page',
@@ -67,6 +73,8 @@ export class NotificationsWidget {
             old.notification.disconnectObject(this);
             Anim.rowOut(old.row);
         }
+        if (isNew)
+            this._unread++;
         this._sync();
 
         if (isNew && this._desktopSettings.get_boolean('show-banners') &&
@@ -109,11 +117,24 @@ export class NotificationsWidget {
     }
 
     onShown() {
+        this._unread = 0;
+        this._syncStatus();
         Anim.stagger(this._list.get_children(), {dy: 6, delay: 100, step: 25, duration: 250});
     }
 
     _sync() {
         Anim.setShown(this._empty, this._items.length === 0 && this._list.get_n_children() === 0);
+        if (this._items.length === 0)
+            this._unread = 0;
+        this._syncStatus();
+    }
+
+    _syncStatus() {
+        if (!this._desktopSettings)
+            return; // a row finished leaving after destroy
+        this._badge.text = this._unread > 9 ? '9+' : `${this._unread}`;
+        this._notch.setStatus(this._badge, this._unread > 0);
+        this._notch.setStatus(this._dnd, !this._desktopSettings.get_boolean('show-banners'));
     }
 
     destroy() {
@@ -123,6 +144,7 @@ export class NotificationsWidget {
         for (const {notification} of this._items)
             notification.disconnectObject(this);
         this._items = [];
+        this._desktopSettings.disconnectObject(this);
         this._desktopSettings = null;
     }
 }

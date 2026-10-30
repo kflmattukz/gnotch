@@ -2,6 +2,7 @@
 // stretched) and crossfades between tracks.
 
 import Clutter from 'gi://Clutter';
+import GdkPixbuf from 'gi://GdkPixbuf';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
@@ -10,6 +11,8 @@ Gio._promisify(Gio.File.prototype, 'load_contents_async');
 Gio._promisify(Gio.File.prototype, 'query_info_async');
 // The finish function of replace_contents_bytes_async is replace_contents_finish
 Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async', 'replace_contents_finish');
+Gio._promisify(Gio.File.prototype, 'read_async');
+Gio._promisify(GdkPixbuf.Pixbuf, 'new_from_stream_at_scale_async', 'new_from_stream_finish');
 
 const CACHE_DIR = GLib.build_filenamev([GLib.get_user_cache_dir(), 'gnotch', 'art']);
 const CROSSFADE_MS = 250;
@@ -44,6 +47,38 @@ async function resolveLocal(url, cancellable) {
     await dest.replace_contents_bytes_async(new GLib.Bytes(bytes), null, false,
         Gio.FileCreateFlags.REPLACE_DESTINATION, cancellable);
     return dest.get_uri();
+}
+
+/**
+ * The art's most vivid average colour, for the panel's ambient tint.
+ *
+ * @param {string} url - art URL (file:// or http(s)://)
+ * @param {Gio.Cancellable} [cancellable]
+ * @returns {Promise<number[]>} [r, g, b] 0..255
+ */
+export async function dominantColor(url, cancellable = null) {
+    const uri = await resolveLocal(url, cancellable);
+    const stream = await Gio.File.new_for_uri(uri).read_async(GLib.PRIORITY_DEFAULT, cancellable);
+    const pixbuf = await GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(stream, 16, 16, false, cancellable);
+    stream.close(null);
+    const bytes = pixbuf.get_pixels();
+    const stride = pixbuf.get_rowstride();
+    const channels = pixbuf.get_n_channels();
+    // Saturated pixels count more, so a grey background doesn't wash the colour out
+    const sum = [0, 0, 0];
+    let total = 0;
+    for (let y = 0; y < pixbuf.get_height(); y++) {
+        for (let x = 0; x < pixbuf.get_width(); x++) {
+            const i = y * stride + x * channels;
+            const [r, g, b] = [bytes[i], bytes[i + 1], bytes[i + 2]];
+            const weight = 0.05 + (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
+            sum[0] += r * weight;
+            sum[1] += g * weight;
+            sum[2] += b * weight;
+            total += weight;
+        }
+    }
+    return sum.map(c => Math.round(c / total));
 }
 
 export class Cover {

@@ -31,11 +31,39 @@ function formatSize(bytes) {
     return GLib.format_size(bytes);
 }
 
+// While files are dragged, Mutter offers the drag data as the DND
+// selection, so the Shell can read the file list itself; no window
+// has to receive the drop.
+export function readDraggedFiles() {
+    const selection = global.display.get_selection();
+    const type = Meta.SelectionType.SELECTION_DND;
+    if (!selection.get_mimetypes(type).includes('text/uri-list'))
+        return Promise.resolve([]);
+    const stream = Gio.MemoryOutputStream.new_resizable();
+    return new Promise(resolve => {
+        selection.transfer_async(type, 'text/uri-list', -1, stream, null, (_s, res) => {
+            try {
+                selection.transfer_finish(res);
+                stream.close(null);
+                const text = new TextDecoder().decode(stream.steal_as_bytes().get_data() ?? new Uint8Array());
+                resolve(text.split(/\r?\n/)
+                    .filter(line => line && !line.startsWith('#'))
+                    .map(uri => Gio.File.new_for_uri(uri.trim()).get_path())
+                    .filter(Boolean));
+            } catch (e) {
+                console.warn(`gnotch: can't read the dragged files: ${e.message}`);
+                resolve([]);
+            }
+        });
+    });
+}
+
 export class ShareWidget {
     constructor(notch) {
         this._notch = notch;
         this.tabIcon = 'send-to-symbolic';
-        this.acceptsDrops = true;
+        // The shelf takes drops when it's on; its rows can still send here
+        this.acceptsDrops = !notch.settings.get_strv('enabled-widgets').includes('shelf');
         this._files = []; // {file, path, name, size, gicon, row}
         this._deviceRows = new Map(); // fingerprint -> {row, status, cancel}
         this._transfer = null; // outgoing: {peer, cancellable, progress}
@@ -50,6 +78,7 @@ export class ShareWidget {
         this.compactLeft = new St.Icon({icon_name: 'send-to-symbolic', icon_size: 16, style_class: 'gnotch-share-icon'});
         this._miniLabel = new St.Label({style_class: 'gnotch-share-mini', y_align: Clutter.ActorAlign.CENTER});
         this.compactRight = new St.Bin({child: this._miniLabel, y_align: Clutter.ActorAlign.CENTER});
+        this.bubble = new St.Icon({icon_name: 'send-to-symbolic', icon_size: 16, style_class: 'gnotch-share-icon'});
 
         // This computer's LocalSend device (the app's own name and certificate)
         this._localsend = new LocalSend();
@@ -633,39 +662,12 @@ export class ShareWidget {
 
     // ---- dropped files ----
 
-    // While files are dragged, Mutter offers the drag data as the DND
-    // selection, so the Shell can read the file list itself; no window
-    // has to receive the drop.
-    _readDraggedFiles() {
-        const selection = global.display.get_selection();
-        const type = Meta.SelectionType.SELECTION_DND;
-        if (!selection.get_mimetypes(type).includes('text/uri-list'))
-            return Promise.resolve([]);
-        const stream = Gio.MemoryOutputStream.new_resizable();
-        return new Promise(resolve => {
-            selection.transfer_async(type, 'text/uri-list', -1, stream, null, (_s, res) => {
-                try {
-                    selection.transfer_finish(res);
-                    stream.close(null);
-                    const text = this._decoder.decode(stream.steal_as_bytes().get_data() ?? new Uint8Array());
-                    resolve(text.split(/\r?\n/)
-                        .filter(line => line && !line.startsWith('#'))
-                        .map(uri => Gio.File.new_for_uri(uri.trim()).get_path())
-                        .filter(Boolean));
-                } catch (e) {
-                    console.warn(`gnotch: can't read the dragged files: ${e.message}`);
-                    resolve([]);
-                }
-            });
-        });
-    }
-
     // Called by the notch while files are dragged over it
     dragEnter() {
         Anim.setShown(this._dropZone, true);
         this._content.ease({opacity: 60, duration: 150});
         // Read now: the selection is gone once the drag ends
-        this._dragged = this._readDraggedFiles();
+        this._dragged = readDraggedFiles();
     }
 
     /** @param {boolean} dropped - released over the notch */
@@ -681,6 +683,15 @@ export class ShareWidget {
             Anim.shake(this._filesEmpty);
             return;
         }
+        this._notch.selectWidget(this);
+        await this._addFiles(paths);
+        this._notch.refit(this);
+    }
+
+    /** Adds files to send and shows them (the shelf's "Send nearby"). */
+    async addFiles(paths) {
+        if (!this._notch.expanded)
+            this._notch.expand();
         this._notch.selectWidget(this);
         await this._addFiles(paths);
         this._notch.refit(this);

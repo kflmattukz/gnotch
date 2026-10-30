@@ -1,4 +1,5 @@
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GnomeDesktop from 'gi://GnomeDesktop';
 import Meta from 'gi://Meta';
@@ -7,11 +8,13 @@ import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {BarLevel} from 'resource:///org/gnome/shell/ui/barLevel.js';
+import {getMixerControl} from 'resource:///org/gnome/shell/ui/status/volume.js';
 
 import * as Anim from './anim.js';
 import {Cover} from './cover.js';
 import {Glass} from './glass.js';
 import {Glow, glowColorFor, rgb} from './glow.js';
+import {SystemStatus} from './status.js';
 import {MediaWidget} from './widgets/media.js';
 import {BatteryWidget} from './widgets/battery.js';
 import {NetworkWidget} from './widgets/network.js';
@@ -23,10 +26,16 @@ import {PomodoroWidget} from './widgets/pomodoro.js';
 import {PrayerWidget} from './widgets/prayer.js';
 import {ShareWidget} from './widgets/share.js';
 import {WhatsAppWidget} from './widgets/whatsapp.js';
+import {ShelfWidget} from './widgets/shelf.js';
+import {StartupWidget} from './widgets/startup.js';
 
 const {EASE_OUT_QUAD, LINEAR} = Clutter.AnimationMode;
 
-const COMPACT_HEIGHT = 32;
+// The pill is an island in the top bar, like the bar's own islands (islands.js)
+const PILL_HEIGHT = 26;
+const GAP = 3; // from the screen edge: centred in the 32px top bar
+const CARD_GAP = 6; // between the pill and a peek card below it
+const SLIVER = [72, 4]; // the pill over fullscreen apps, until hovered
 const IDLE_WIDTH = 150;
 const ACTIVE_WIDTH = 280;
 const PEEK_WIDTH = 400;
@@ -34,21 +43,28 @@ const PEEK_HEIGHT = 50;
 // The expanded height follows the selected tab's content, within these bounds
 const EXPANDED_MIN_HEIGHT = 200;
 const EXPANDED_MAX_HEIGHT = 440;
-const EXPANDED_PADDING = [18, 8, 18, 16]; // left, top, right, bottom (matches .gnotch-expanded)
-const HOVER_BULGE = [14, 4];
-const EAR = 10; // concave "shoulders" joining the screen edge
+// left, top, right, bottom (matches .gnotch-expanded); the top makes room for the pill
+const EXPANDED_PADDING = [18, 42, 18, 16];
+const HOVER_BULGE = [14, 2]; // barely taller: the pill stays inside the bar
+const PANEL_RADIUS = 28;
+const BUBBLE_GAP = 6; // between the pill and the split-island bubble
+const HEADER_GREY = [28, 28, 30]; // the pill on top of the open panel: a step lighter than it
+const AMBIENT_STRENGTH = 0.2; // a faint glow of the ambient colour at the panel's top
+const AMBIENT_SPRING = Anim.Springs.LAZY;
+const VOLUME_STEP = 0.05;
+const SKIP_COOLDOWN_US = 500 * 1000; // one track per horizontal swipe
 // Black tint left over the frosted glass when fully expanded. Blur my Shell's
 // top bar has none, so keep it light enough for the glass to read the same
 const GLASS_TINT = 0.12;
 const GLASS_IN = {stiffness: 170, damping: 26};  // ζ≈1, slow dissolve into glass
 const GLASS_OUT = {stiffness: 420, damping: 41}; // back to solid black quickly
 
-// Shape springs per transition: width can bounce, height lands softer
-// (vertical overshoot against the screen edge looks wrong)
+// Shape springs per transition: width can bounce, height lands softer.
+// w/h/t drive the pill; pw/ph/py the drawer behind it (they follow w/h unless given).
 const SHAPE = {
-    expand: {w: Anim.Springs.BOUNCY, h: Anim.Springs.SMOOTH},
+    expand: {w: Anim.Springs.SMOOTH, h: Anim.Springs.SMOOTH, pw: Anim.Springs.BOUNCY, ph: Anim.Springs.SMOOTH},
     collapse: {w: Anim.Springs.SETTLE, h: Anim.Springs.SETTLE},
-    peek: {w: {stiffness: 340, damping: 30}, h: Anim.Springs.SMOOTH}, // ζ≈0.81
+    peek: {w: Anim.Springs.SMOOTH, h: Anim.Springs.SMOOTH, pw: {stiffness: 340, damping: 30}, ph: Anim.Springs.SMOOTH}, // ζ≈0.81
     compact: {w: Anim.Springs.SMOOTH, h: Anim.Springs.SETTLE},
     hover: {w: Anim.Springs.SNAPPY, h: Anim.Springs.SNAPPY},
 };
@@ -66,15 +82,22 @@ const WIDGETS = {
     todo: TodoWidget,
     notifications: NotificationsWidget,
     devices: DevicesWidget,
+    shelf: ShelfWidget,
 };
 
 // Home tab: media card on the left, a 2-column grid of tiles from these widgets on the right
 const TILE_WIDGETS = ['battery', 'network', 'todo', 'pomodoro', 'prayer'];
 const OSD_DURATION_MS = 1500;
+const COMPACT_SPACING = 12; // matches .gnotch-compact
 
-function cornerRadius(height) {
-    return Math.min(32, Math.round(10 + height * 0.2));
+// The panel's ambient tint without music, by hour: night, dawn, day, dusk
+const TIME_TINTS = [[0, [72, 80, 160]], [5, [246, 151, 110]], [8, [98, 160, 234]], [17, [192, 97, 203]], [20, [72, 80, 160]]];
+
+function timeTint(hour) {
+    return TIME_TINTS.findLast(([from]) => hour >= from)[1];
 }
+
+const clamp01 = v => Math.min(1, Math.max(0, v));
 
 export class Notch {
     constructor(settings, path) {
@@ -85,37 +108,60 @@ export class Notch {
         this._peekQueue = [];
         this._grab = null;
         this._compactShown = new Map();
+        this._compactSecond = null;
         this._currentTab = -1;
-        this._radius = -1;
+        this._fullscreen = false;
+        this._status = new Map(); // status glyph -> {shown, widget}
+        this._statusWidth = 0;
+        this._pillStyle = '';
+        this._tintStyle = '';
+        this._volumeScroll = 0;
+        this._skipScroll = 0;
+        this._lastSkip = 0;
 
-        // Outer container: pill plus the two shoulders
-        this.actor = new St.Widget({style_class: 'gnotch-container'});
+        // Container: the drawer, the split-island bubble and the pill on top.
+        // It tracks hover for all of them, so the open drawer stays open under the pointer.
+        this.actor = new St.Widget({style_class: 'gnotch', reactive: true, track_hover: true});
+
+        // The drawer behind the pill: a peek card below it, or the open panel
+        // around it. Blurred wallpaper, then the (ambient) tint, then content.
+        this._panel = new St.Widget({
+            style_class: 'gnotch-panel',
+            clip_to_allocation: true,
+            layout_manager: new Clutter.BinLayout(),
+            visible: false,
+        });
+        this._glass = new Glass(() => this._syncGlass());
+        this._tint = new St.Widget({x_expand: true, y_expand: true});
+        this._panel.add_child(this._glass.actor);
+        this._panel.add_child(this._tint);
+
+        // Second activity, split off beside the pill
+        this._bubble = new St.Bin({style_class: 'gnotch-bubble', reactive: true, visible: false});
+        this._bubbleWidth = PILL_HEIGHT;
+
+        // The pill: the clock or a live activity, always shown
         this._pill = new St.Widget({
-            style_class: 'gnotch',
+            style_class: 'gnotch-pill',
             reactive: true,
-            track_hover: true,
             clip_to_allocation: true,
             layout_manager: new Clutter.BinLayout(),
         });
-        // Layers inside the pill: blurred wallpaper, then the black tint, then content
-        this._glass = new Glass(() => this._syncGlass());
-        this._tint = new St.Widget({x_expand: true, y_expand: true});
-        this._pill.add_child(this._glass.actor);
-        this._pill.add_child(this._tint);
-        this._tintStyle = '';
 
-        this._earLeft = this._makeEar(false);
-        this._earRight = this._makeEar(true);
-        this.actor.add_child(this._earLeft);
-        this.actor.add_child(this._earRight);
+        this.actor.add_child(this._panel);
+        this.actor.add_child(this._bubble);
         this.actor.add_child(this._pill);
-        // The glowing edge goes on top: its halo spreads outside the pill
+        // The glowing edge goes on top: its halo spreads outside the notch
         this._glow = new Glow();
         this.actor.add_child(this._glow.actor);
 
-        this._shape = new Anim.Spring(this._pill,
-            {w: IDLE_WIDTH, h: COMPACT_HEIGHT, g: 0},
-            v => this._applyShape(v));
+        // w/h: pill size; t: its top (0 as a fullscreen sliver); c: pill colour
+        // (black..header grey); pw/ph/py: drawer size and offset below the pill's
+        // top; g: glass; b: bubble; ar/ag/ab: ambient colour
+        this._shape = new Anim.Spring(this._pill, {
+            w: IDLE_WIDTH, h: PILL_HEIGHT, t: GAP, c: 0,
+            pw: IDLE_WIDTH, ph: PILL_HEIGHT, py: 0, g: 0, b: 0, ar: 0, ag: 0, ab: 0,
+        }, v => this._applyShape(v));
 
         this._buildCompact();
         this._buildPeek();
@@ -123,22 +169,20 @@ export class Notch {
 
         const enabled = this._settings.get_strv('enabled-widgets');
         this._widgets = new Map();
+        // Right after login: a loading state while apps and extensions start (owns the pill first)
+        if (Main.layoutManager._startingUp)
+            this._widgets.set('startup', new StartupWidget(this));
         for (const [name, Widget] of Object.entries(WIDGETS)) {
             if (enabled.includes(name))
                 this._widgets.set(name, new Widget(this));
         }
         this._populate();
+        this._systemStatus = new SystemStatus(this);
 
-        this._pill.connect('notify::hover', () => this._onHover());
-        this._pill.connect('button-press-event', (_a, event) => {
-            // The peek's own buttons (accept / decline...) don't open the notch
-            if (this._peekActions.contains(global.stage.get_event_actor(event)))
-                return Clutter.EVENT_PROPAGATE;
-            if (this._state !== 'expanded')
-                this.expand();
-            return Clutter.EVENT_PROPAGATE;
-        });
-        this._pill.connect('key-press-event', (_a, event) => {
+        this.actor.connect('notify::hover', () => this._onHover());
+        this.actor.connect('button-press-event', (_a, event) => this._onPress(event));
+        this._pill.connect('scroll-event', (_a, event) => this._onScroll(event));
+        this.actor.connect('key-press-event', (_a, event) => {
             if (event.get_key_symbol() === Clutter.KEY_Escape) {
                 this.collapse();
                 return Clutter.EVENT_STOP;
@@ -146,12 +190,14 @@ export class Notch {
             return Clutter.EVENT_PROPAGATE;
         });
 
-        Main.layoutManager.addChrome(this.actor, {
-            affectsStruts: false,
-            trackFullscreen: true,
-        });
-        Main.layoutManager.connectObject('monitors-changed',
-            () => this._applyShape(this._shape.values), this);
+        // Not hidden over fullscreen apps: it shrinks to a sliver there instead
+        Main.layoutManager.addChrome(this.actor, {affectsStruts: false});
+        Main.layoutManager.connectObject('monitors-changed', () => {
+            this._applyShape(this._shape.values);
+            this._syncFullscreen();
+        }, this);
+        global.display.connectObject('in-fullscreen-changed', () => this._syncFullscreen(), this);
+        this._syncFullscreen();
 
         this._settings.connectObject(
             'changed::hide-clock', () => this._syncClock(),
@@ -167,35 +213,15 @@ export class Notch {
 
         this._hookOsd();
         this._hookDnd();
+        this._syncStatus(); // measurable now that the notch is on the stage
+        Main.wm.addKeybinding('capture-shortcut', this._settings, Meta.KeyBindingFlags.NONE,
+            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this._capture());
         this.updateCompact();
-        const [w, h] = this._targetSize();
-        this._shape.set({w, h});
+        this._shape.set(this._targets());
+        this.syncAmbient();
     }
 
     // ---- building ----
-
-    _makeEar(right) {
-        const ear = new St.DrawingArea({width: EAR, height: EAR});
-        ear.connect('repaint', area => {
-            const cr = area.get_context();
-            cr.setSourceRGBA(0, 0, 0, 1);
-            // Square minus a quarter circle: a concave fillet into the pill side
-            if (right) {
-                cr.moveTo(EAR, 0);
-                cr.lineTo(0, 0);
-                cr.lineTo(0, EAR);
-                cr.arc(EAR, EAR, EAR, Math.PI, 1.5 * Math.PI);
-            } else {
-                cr.moveTo(0, 0);
-                cr.lineTo(EAR, 0);
-                cr.lineTo(EAR, EAR);
-                cr.arcNegative(0, EAR, EAR, 0, -0.5 * Math.PI);
-            }
-            cr.fill();
-            cr.$dispose();
-        });
-        return ear;
-    }
 
     _buildCompact() {
         this._compact = new St.BoxLayout({
@@ -223,15 +249,23 @@ export class Notch {
         });
         this._clockBin.set_pivot_point(0.5, 0.5);
         this._compactCenter.add_child(this._clockBin);
+        // Status glyphs at both ends (charging, unread, mic in use...): see setStatus()
+        this._statusLeft = new St.BoxLayout({style_class: 'gnotch-status', y_align: Clutter.ActorAlign.CENTER, visible: false});
+        this._statusRight = new St.BoxLayout({style_class: 'gnotch-status', y_align: Clutter.ActorAlign.CENTER, visible: false});
+        this._compact.add_child(this._statusLeft);
         this._compact.add_child(this._compactLeft);
         this._compact.add_child(this._compactCenter);
         this._compact.add_child(this._compactRight);
+        this._compact.add_child(this._statusRight);
         this._compact.set_pivot_point(0.5, 0.5);
-        this._pill.add_child(this._compact);
+        // Fades with the fullscreen sliver; _compact's own fades stay separate
+        this._compactWrap = new St.Bin({child: this._compact, x_expand: true, y_expand: true});
+        this._pill.add_child(this._compactWrap);
 
         this._wallClock = new GnomeDesktop.WallClock({time_only: true});
         this._wallClock.connectObject('notify::clock', () => {
             this._clock.text = this._wallClock.clock;
+            this.syncAmbient(); // the time-of-day tint moves on
         }, this);
         this._clock.text = this._wallClock.clock;
     }
@@ -299,7 +333,8 @@ export class Notch {
 
         this._peek.add_child(row);
         this._peek.add_child(this._peekProgress);
-        this._pill.add_child(this._peek);
+        // A card that drops out of the drawer under the pill
+        this._panel.add_child(this._peek);
     }
 
     _buildExpanded() {
@@ -312,23 +347,17 @@ export class Notch {
         });
         this._expanded.set_pivot_point(0.5, 0);
 
-        // Tab bar: a sliding indicator underneath the icon buttons
-        this._tabBar = new St.Widget({
-            layout_manager: new Clutter.BinLayout(),
-            x_align: Clutter.ActorAlign.CENTER,
-        });
-        this._tabIndicator = new St.Widget({
-            style_class: 'gnotch-tab-indicator',
-            x_align: Clutter.ActorAlign.START,
-            y_align: Clutter.ActorAlign.FILL,
-            width: 0,
-        });
+        // Tab bar: a sliding indicator underneath the icon buttons. Fixed
+        // layout, so the indicator sits exactly where it's placed (a bin
+        // layout would centre it)
+        this._tabBar = new St.Widget({x_align: Clutter.ActorAlign.CENTER});
+        this._tabIndicator = new St.Widget({style_class: 'gnotch-tab-indicator', width: 0});
         this._tabButtons = new St.BoxLayout({style_class: 'gnotch-tabs'});
         this._tabBar.add_child(this._tabIndicator);
         this._tabBar.add_child(this._tabButtons);
         this._indicator = new Anim.Spring(this._tabIndicator, {l: 0, r: 0}, v => {
-            this._tabIndicator.translation_x = v.l;
-            this._tabIndicator.width = Math.max(0, v.r - v.l);
+            this._tabIndicator.x = Math.round(v.l);
+            this._tabIndicator.width = Math.max(0, Math.round(v.r - v.l));
         });
 
         this._stack = new St.Widget({
@@ -339,7 +368,7 @@ export class Notch {
         });
         this._expanded.add_child(this._tabBar);
         this._expanded.add_child(this._stack);
-        this._pill.add_child(this._expanded);
+        this._panel.add_child(this._expanded);
         this._tabs = [];
     }
 
@@ -480,8 +509,10 @@ export class Notch {
                 this._queueLater(() => this._moveIndicator(false));
             return;
         }
-        const l = button.x;
-        const r = button.x + button.width;
+        // Inset in the segmented row, exactly over the button
+        this._tabIndicator.set({y: this._tabButtons.y + button.y, height: button.height});
+        const l = this._tabButtons.x + button.x;
+        const r = l + button.width;
         if (!animate || this._indicator.values.r === 0) {
             this._indicator.set({l, r});
             return;
@@ -526,6 +557,71 @@ export class Notch {
         return this._state === 'expanded';
     }
 
+    /** An enabled widget by name, or null. */
+    widget(name) {
+        return this._widgets.get(name) ?? null;
+    }
+
+    /**
+     * Shows or hides a small status glyph in the pill, readable at a glance.
+     *
+     * @param {Clutter.Actor} actor - the glyph (the caller keeps it up to date)
+     * @param {boolean} shown
+     * @param {object} [opts]
+     * @param {object} [opts.widget] - hidden while this widget owns the pill (it shows the same thing bigger)
+     * @param {string} [opts.side] - 'left' (privacy lights) or 'right' (default)
+     */
+    setStatus(actor, shown, {widget = null, side = 'right'} = {}) {
+        if (!this._status.has(actor)) {
+            actor.hide();
+            actor.set_pivot_point(0.5, 0.5);
+            (side === 'left' ? this._statusLeft : this._statusRight).add_child(actor);
+        }
+        this._status.set(actor, {shown, widget});
+        this._syncStatus();
+    }
+
+    _syncStatus() {
+        for (const [actor, {shown, widget}] of this._status) {
+            const visible = shown && (!widget || widget !== this._compactOwner);
+            if (visible === actor.visible)
+                continue;
+            if (visible)
+                Anim.fadeIn(actor, {scale: 0.5, duration: 250, mode: EASE_OUT_QUAD});
+            else
+                actor.hide();
+        }
+        let width = 0;
+        for (const box of [this._statusLeft, this._statusRight]) {
+            box.visible = box.get_children().some(c => c.visible);
+            // Measured once styled, i.e. on the stage
+            if (box.visible && this.actor.get_stage())
+                width += box.get_preferred_width(-1)[1] + COMPACT_SPACING;
+        }
+        width = Math.ceil(width);
+        if (width === this._statusWidth)
+            return;
+        this._statusWidth = width;
+        if (this._state !== 'peek' && this._shape)
+            this._reshape(this._state === 'expanded' ? SHAPE.expand : SHAPE.compact);
+    }
+
+    /** Plays an edge glow outside of a peek (kinds as for peek's glow), or releases it with null. */
+    glow(kind, color = null) {
+        if (kind)
+            this._glow.play(kind, color ? rgb(color) : null);
+        else
+            this._glow.release();
+    }
+
+    /** Re-reads the ambient colour: the album art's, or the time of day's. */
+    syncAmbient() {
+        if (!this._widgets)
+            return; // called while constructing
+        const [ar, ag, ab] = this._widgets.get('media')?.ambientColor ?? timeTint(new Date().getHours());
+        this._shape.animateTo({ar, ag, ab}, AMBIENT_SPRING);
+    }
+
     /** Re-evaluates which widget owns the compact pill. */
     updateCompact() {
         let owner = null;
@@ -564,6 +660,21 @@ export class Notch {
         }
         const ownerChanged = owner !== this._compactOwner;
         this._compactOwner = owner;
+        if (ownerChanged)
+            this._syncStatus(); // the owner's own glyph hides while it shows the real thing
+
+        // Split island: the next active widget gets a bubble beside the pill
+        const second = owner
+            ? [...this._widgets.values()].find(w => w !== owner && w.bubble && w.wantsCompact?.()) ?? null
+            : null;
+        const secondChanged = second !== this._compactSecond;
+        if (secondChanged) {
+            this._compactSecond = second;
+            if (second) {
+                second.bubble.set({x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+                this._bubble.child = second.bubble;
+            }
+        }
 
         // The clock gives way when the owner brings its own center content
         const showClock = !owner || (owner.showClockInCompact && !owner.compactCenter);
@@ -575,8 +686,9 @@ export class Notch {
             delay: showClock ? 120 : 0,
             mode: showClock ? EASE_OUT_QUAD : Clutter.AnimationMode.EASE_IN_QUAD,
         });
-        if (ownerChanged && this._state === 'compact')
-            this._reshape(SHAPE.compact);
+        if ((ownerChanged || secondChanged) && this._state !== 'peek') {
+            this._reshape(this._state === 'expanded' ? SHAPE.expand : SHAPE.compact);
+        }
     }
 
     /**
@@ -599,6 +711,9 @@ export class Notch {
      * @returns {boolean} whether the notch shows it
      */
     peek(p) {
+        // Over a fullscreen app only what can't wait shows (calls, volume...)
+        if (this._fullscreen && !p.urgent && !p.force)
+            return false;
         if (this._state === 'expanded') {
             if (!p.force)
                 return false;
@@ -792,8 +907,8 @@ export class Notch {
     }
 
     _containsPoint(x, y) {
-        const [px, py] = this._pill.get_transformed_position();
-        const [w, h] = this._pill.get_transformed_size();
+        const [px, py] = this.actor.get_transformed_position();
+        const [w, h] = this.actor.get_transformed_size();
         return x >= px && x < px + w && y >= py && y < py + h;
     }
 
@@ -829,7 +944,7 @@ export class Notch {
     /** Takes keyboard focus (needed to type into entries). */
     grabKeyboard(focusActor) {
         if (!this._grab)
-            this._grab = Main.pushModal(this._pill, {actionMode: Shell.ActionMode.NORMAL});
+            this._grab = Main.pushModal(this.actor, {actionMode: Shell.ActionMode.NORMAL});
         focusActor?.grab_key_focus();
     }
 
@@ -872,7 +987,7 @@ export class Notch {
             Anim.fadeOut(this._peekVisual ?? this._peekIcon, {scale: 0.6, duration: 100, hide: false});
             Anim.fadeOut(this._peekBody, {dy: -6, duration: 100, hide: false});
             Anim.fadeOut(this._peekTitle, {dy: -6, duration: 100, hide: false, onComplete: fill});
-            this._shape.kick({w: 260, h: 60});
+            this._shape.kick({pw: 260, ph: 60});
         } else {
             // Show the layer first: eases on unmapped actors finish instantly
             this._setState('peek');
@@ -913,20 +1028,127 @@ export class Notch {
         }
     }
 
-    // Clicking expands (see the button-press handler); leaving the notch collapses it
+    // ---- pointer ----
+
+    _onPress(event) {
+        const target = global.stage.get_event_actor(event);
+        // The peek's own buttons (accept / decline...) don't open the notch
+        if (this._peekActions.contains(target))
+            return Clutter.EVENT_PROPAGATE;
+        // Middle-click on the pill: play / pause without opening
+        if (event.get_button() === Clutter.BUTTON_MIDDLE && this._pill.contains(target)) {
+            this._widgets.get('media')?.playPause();
+            return Clutter.EVENT_STOP;
+        }
+        if (this._bubble.contains(target)) {
+            const second = this._compactSecond;
+            this.expand();
+            if (second)
+                this.selectWidget(second);
+            return Clutter.EVENT_STOP;
+        }
+        if (this._state !== 'expanded')
+            this.expand();
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    // Scrolling on the pill: up/down changes the volume, sideways (or with
+    // Shift) skips tracks
+    _onScroll(event) {
+        let [dx, dy] = [0, 0];
+        switch (event.get_scroll_direction()) {
+        case Clutter.ScrollDirection.UP:
+            dy = -1;
+            break;
+        case Clutter.ScrollDirection.DOWN:
+            dy = 1;
+            break;
+        case Clutter.ScrollDirection.LEFT:
+            dx = -1;
+            break;
+        case Clutter.ScrollDirection.RIGHT:
+            dx = 1;
+            break;
+        default:
+            [dx, dy] = event.get_scroll_delta();
+        }
+        if (event.get_state() & Clutter.ModifierType.SHIFT_MASK)
+            [dx, dy] = [dy || dx, 0];
+        if (Math.abs(dx) > Math.abs(dy))
+            this._scrollSkip(dx);
+        else
+            this._scrollVolume(dy);
+        return Clutter.EVENT_STOP;
+    }
+
+    _scrollSkip(dx) {
+        const media = this._widgets.get('media');
+        const now = GLib.get_monotonic_time();
+        // The tail of a swipe that already skipped doesn't skip again
+        if (!media || now - this._lastSkip < SKIP_COOLDOWN_US) {
+            this._skipScroll = 0;
+            return;
+        }
+        this._skipScroll += dx;
+        if (Math.abs(this._skipScroll) < 1)
+            return;
+        if (this._skipScroll > 0)
+            media.next();
+        else
+            media.previous();
+        this._skipScroll = 0;
+        this._lastSkip = now;
+    }
+
+    _scrollVolume(dy) {
+        // Touchpads send fractions: one step per whole unit
+        this._volumeScroll += dy;
+        const steps = Math.trunc(this._volumeScroll);
+        if (!steps)
+            return;
+        this._volumeScroll -= steps;
+        const control = getMixerControl();
+        const sink = control.get_default_sink();
+        if (!sink)
+            return;
+        const max = control.get_vol_max_norm();
+        const volume = Math.min(max, Math.max(0, sink.volume - steps * VOLUME_STEP * max));
+        sink.volume = volume;
+        if (sink.is_muted && volume > 0)
+            sink.change_is_muted(false);
+        sink.push_volume();
+        const level = volume / max;
+        const icon = level === 0 ? 'muted' : level < 0.34 ? 'low' : level < 0.67 ? 'medium' : 'high';
+        // Through the OSD hook: a level peek, or the Shell popup while open
+        Main.osdWindowManager.showAll(new Gio.ThemedIcon({name: `audio-volume-${icon}-symbolic`}), null, level, 1);
+    }
+
+    // Clicking expands (see _onPress); leaving the notch collapses it
     _onHover() {
         if (this._dropActive)
-            return; // the pill ignores the pointer while files are dragged onto it
-        if (this._pill.hover) {
+            return; // the notch ignores the pointer while files are dragged onto it
+        if (this.actor.hover) {
             this._cancel('collapse');
         } else if (this._state === 'expanded') {
             this._schedule('collapse', this._settings.get_uint('collapse-delay-ms'),
                 () => this.collapse());
         }
-        // Anticipation: the pill swells slightly under the pointer
+        // The pill swells under the pointer (or grows back from the fullscreen sliver)
         if (this._state !== 'expanded')
             this._reshape(SHAPE.hover);
     }
+
+    /** Quick capture shortcut: opens the to-do entry, ready to type. */
+    _capture() {
+        const todo = this._widgets.get('todo');
+        if (!todo)
+            return;
+        this.expand();
+        this.selectWidget(todo);
+        todo.onShown();
+    }
+
+    // ---- state machine ----
 
     _setState(state) {
         const old = this._state;
@@ -936,12 +1158,11 @@ export class Notch {
 
         if (old === 'peek')
             this._glow.release();
+        this._syncGlow(); // no pointer glow inside the open panel
 
-        // Outgoing content leaves quickly so the shape change reads clearly
+        // The pill keeps its content in every state; the drawer's content
+        // leaves quickly so the shape change reads clearly
         switch (old) {
-        case 'compact':
-            Anim.fadeOut(this._compact, {scale: 0.9, duration: 120});
-            break;
         case 'peek':
             this._peekProgress.remove_all_transitions();
             Anim.fadeOut(this._peek, {dy: -4, scale: 0.97, duration: 140});
@@ -953,12 +1174,14 @@ export class Notch {
 
         switch (state) {
         case 'compact':
-            Anim.fadeIn(this._compact, {scale: 0.95, delay: 100, duration: 250});
             this._reshape(SHAPE.collapse);
             break;
         case 'peek':
+            // Map the drawer now: eases on unmapped actors finish instantly
+            this._panel.show();
             this._peek.remove_all_transitions();
             this._peek.set({visible: true, opacity: 255, translation_y: 0, scale_x: 1, scale_y: 1});
+            Anim.blurIn(this._peek);
             this._reshape(SHAPE.peek);
             break;
         case 'expanded':
@@ -978,9 +1201,12 @@ export class Notch {
 
     _enterExpanded() {
         this._expanded.set_size(this._settings.get_uint('expanded-width'), this._expandedHeight());
+        // Map the drawer now: eases on unmapped actors finish instantly
+        this._panel.show();
         this._reshape(SHAPE.expand);
 
         Anim.fadeIn(this._expanded, {dy: -8, scale: 0.98, delay: 50, duration: 250});
+        Anim.blurIn(this._expanded, {delay: 50});
 
         // Tab icons pop in one after another, then the page content cascades
         this._tabs.forEach((tab, i) => Anim.fadeIn(tab.button, {
@@ -1003,71 +1229,155 @@ export class Notch {
 
     // ---- shape ----
 
-    _targetSize() {
+    /** Spring targets for the current state. */
+    _targets() {
+        const owner = this._compactOwner;
+        const compactWidth = (owner?.compactWidth ?? (owner ? ACTIVE_WIDTH : IDLE_WIDTH)) + this._statusWidth;
+        // Over a fullscreen app the idle pill is a sliver at the edge, until hovered
+        const sliver = this._fullscreen && this._state === 'compact' && !this.actor.hover;
+        const [w, h] = sliver ? SLIVER : this._bulge([compactWidth, PILL_HEIGHT]);
+        const pill = {w, h, t: sliver ? 0 : GAP, c: 0};
         switch (this._state) {
         case 'expanded':
-            return [this._settings.get_uint('expanded-width'), this._expanded.height];
+            // The drawer opens around the pill, which stays put as its header
+            return {
+                ...pill, c: 1,
+                pw: this._settings.get_uint('expanded-width'), ph: this._expanded.height, py: 0,
+                b: 0,
+            };
         case 'peek':
-            return this._bulge([PEEK_WIDTH, PEEK_HEIGHT]);
+            // A card drops out from under the pill; the pill keeps the clock
+            return {...pill, pw: PEEK_WIDTH, ph: PEEK_HEIGHT, py: h + CARD_GAP, b: 0};
         default:
-            return this._bulge([
-                this._compactOwner?.compactWidth ?? (this._compactOwner ? ACTIVE_WIDTH : IDLE_WIDTH),
-                COMPACT_HEIGHT,
-            ]);
+            // Closed, the drawer hides exactly behind the pill
+            return {...pill, pw: w, ph: h, py: 0, b: this._compactSecond && !sliver ? 1 : 0};
         }
     }
 
     _bulge([w, h]) {
-        return this._pill.hover ? [w + HOVER_BULGE[0], h + HOVER_BULGE[1]] : [w, h];
+        // Anticipation: the pill swells slightly under the pointer
+        return this.actor.hover && this._state !== 'expanded' ? [w + HOVER_BULGE[0], h + HOVER_BULGE[1]] : [w, h];
     }
 
     _reshape(springs) {
-        const [w, h] = this._targetSize();
-        this._shape.animateTo({w, h}, springs);
+        const {w, h} = springs;
+        this._shape.animateTo(this._targets(), {
+            w, h, t: h, c: h,
+            pw: springs.pw ?? w, ph: springs.ph ?? h, py: springs.ph ?? h,
+            b: Anim.Springs.BOUNCY,
+        });
     }
 
-    _applyShape({w, h, g}) {
+    _applyShape({w, h, t, c, pw, ph, py, g, b, ar, ag, ab}) {
         const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor)
             return;
-        // Never let a spring overshoot collapse the pill below a sliver
-        const width = Math.max(40, Math.round(w));
-        const height = Math.max(8, Math.round(h));
-        const x = monitor.x + Math.round((monitor.width - width) / 2);
+        // Never let a spring overshoot collapse the shapes to nothing
+        const width = Math.max(8, Math.round(w));
+        const height = Math.max(2, Math.round(h));
+        const top = Math.max(0, Math.round(t));
 
-        this.actor.set_position(x - EAR, monitor.y);
-        this.actor.set_size(width + 2 * EAR, height);
-        this._pill.set_position(EAR, 0);
+        // Positions relative to the monitor's top-left
+        const pill = {x: Math.round((monitor.width - width) / 2), y: top, width, height};
+        const panelWidth = Math.max(8, Math.round(pw));
+        const panelHeight = Math.max(2, Math.round(ph));
+        const panel = {
+            x: Math.round((monitor.width - panelWidth) / 2),
+            y: top + Math.round(py),
+            width: panelWidth,
+            height: panelHeight,
+        };
+        const panelShown = this._state !== 'compact' ||
+            panelWidth > width + 1 || panelHeight > height + 1 || Math.abs(py) > 1;
+        const reveal = clamp01(b);
+        const bubbleShown = reveal > 0.01 && !!this._bubble.child;
+        // The bubble slides out from under the pill's right end
+        const bubbleSize = Math.min(PILL_HEIGHT, height);
+        if (bubbleShown)
+            this._bubbleWidth = Math.max(bubbleSize, Math.ceil(this._bubble.get_preferred_width(bubbleSize)[1]));
+        const bubble = {
+            x: pill.x + width - this._bubbleWidth + (this._bubbleWidth + BUBBLE_GAP) * reveal,
+            y: pill.y + Math.round((height - bubbleSize) / 2),
+        };
+
+        const left = Math.min(pill.x, panelShown ? panel.x : pill.x);
+        const right = Math.max(pill.x + width, panelShown ? panel.x + panelWidth : 0,
+            bubbleShown ? bubble.x + this._bubbleWidth : 0);
+        const bottom = Math.max(pill.y + height, panelShown ? panel.y + panelHeight : 0);
+        this.actor.set_position(monitor.x + left, monitor.y);
+        this.actor.set_size(right - left, bottom);
+
+        this._pill.set_position(pill.x - left, pill.y);
         this._pill.set_size(width, height);
-        this._earLeft.set_position(0, 0);
-        this._earRight.set_position(EAR + width, 0);
+        // The pill's content fades away as it thins into the fullscreen sliver
+        this._compactWrap.opacity = Math.round(255 * clamp01((height - 12) / (PILL_HEIGHT - 12)));
+        const radius = Math.floor(Math.min(height, width) / 2);
+        const tone = clamp01(c);
+        const grey = HEADER_GREY.map(v => Math.round(v * tone)).join(', ');
+        const pillStyle = `background-color: rgb(${grey}); border-radius: ${radius}px; ` +
+            `box-shadow: inset 0 0 0 1px rgba(255, 255, 255, ${(0.1 * tone).toFixed(2)});`;
+        if (pillStyle !== this._pillStyle) {
+            this._pillStyle = pillStyle;
+            this._pill.style = pillStyle;
+        }
 
-        const radius = cornerRadius(height);
-        this._radius = radius;
-        this._pillOrigin = [x, monitor.y];
-        this._glow.setShape({x: EAR, width, height, radius});
-        this._queuePointer();
+        this._bubble.visible = bubbleShown;
+        if (bubbleShown) {
+            this._bubble.set_position(Math.round(bubble.x) - left, bubble.y);
+            this._bubble.set_size(this._bubbleWidth, bubbleSize);
+            this._bubble.opacity = Math.round(255 * reveal);
+            this._bubble.style = `border-radius: ${Math.floor(bubbleSize / 2)}px;`;
+        }
 
-        // Black dissolves into frosted glass; the shoulders melt away with it
-        const glass = Math.min(1, Math.max(0, g));
-        this._glass.radius = radius;
+        this._panel.visible = panelShown;
+        const panelRadius = Math.min(PANEL_RADIUS, Math.floor(panelHeight / 2), Math.floor(panelWidth / 2));
+        if (panelShown) {
+            this._panel.set_position(panel.x - left, panel.y);
+            this._panel.set_size(panelWidth, panelHeight);
+        }
+
+        // Black dissolves into dark frosted glass, with a faint ambient glow at the top
+        const glass = clamp01(g);
+        this._glass.radius = panelRadius;
         this._glass.progress = glass;
-        const alpha = (1 - glass * (1 - GLASS_TINT)).toFixed(3);
-        const tintStyle = `border-radius: 0 0 ${radius}px ${radius}px; background-color: rgba(0, 0, 0, ${alpha});`;
+        const alpha = 1 - glass * (1 - GLASS_TINT);
+        const tint = [ar, ag, ab].map(v => Math.round(Math.max(0, v) * AMBIENT_STRENGTH)).join(', ');
+        const tintStyle = `border-radius: ${panelRadius}px; ` +
+            'background-gradient-direction: vertical; ' +
+            `background-gradient-start: rgba(${tint}, ${Math.max(alpha, 0.5).toFixed(3)}); ` +
+            `background-gradient-end: rgba(0, 0, 0, ${alpha.toFixed(3)});`;
         if (tintStyle !== this._tintStyle) {
             this._tintStyle = tintStyle;
             this._tint.style = tintStyle;
         }
-        const earOpacity = Math.round(255 * (1 - glass));
-        this._earLeft.opacity = earOpacity;
-        this._earRight.opacity = earOpacity;
+
+        // The edge light follows what the eye is on: the drawer while it's out, else the pill
+        const lit = panelShown ? {...panel, radius: panelRadius} : {...pill, radius};
+        this._glow.setShape({
+            x: lit.x - left, y: lit.y, width: lit.width, height: lit.height,
+            radius: lit.radius,
+        });
+        this._glowOrigin = [monitor.x + lit.x, monitor.y + lit.y];
+        this._queuePointer();
+    }
+
+    // ---- fullscreen ----
+
+    _syncFullscreen() {
+        const fullscreen = !!Main.layoutManager.primaryMonitor?.inFullscreen;
+        if (fullscreen === this._fullscreen)
+            return;
+        this._fullscreen = fullscreen;
+        this._reshape(this._state === 'expanded' ? SHAPE.expand : SHAPE.compact);
     }
 
     // ---- glow ----
 
     _syncGlow() {
         this._glow.enabled = this._settings.get_boolean('glow-enabled');
-        this._glow.hoverEnabled = this._glow.enabled && this._settings.get_boolean('glow-hover');
+        // Inside the open panel the pointer is always near an edge: no hover glow there
+        this._glow.hoverEnabled = this._glow.enabled && this._settings.get_boolean('glow-hover') &&
+            this._state !== 'expanded';
         if (!this._glow.enabled)
             this._glow.release();
         this._queuePointer();
@@ -1097,12 +1407,12 @@ export class Notch {
 
     /** Hands the pointer to the glow, at most once per frame. */
     _queuePointer() {
-        if (this._pointerLaterId || !this._pillOrigin)
+        if (this._pointerLaterId || !this._glowOrigin)
             return;
         this._pointerLaterId = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
             this._pointerLaterId = 0;
             const [px, py] = global.get_pointer();
-            this._glow.setPointer(px - this._pillOrigin[0], py - this._pillOrigin[1]);
+            this._glow.setPointer(px - this._glowOrigin[0], py - this._glowOrigin[1]);
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -1157,10 +1467,18 @@ export class Notch {
         }
 
         this._unhookOsd();
+        this._systemStatus.destroy();
+        Main.wm.removeKeybinding('capture-shortcut');
         global.backend.get_cursor_tracker().disconnectObject(this);
         if (this._pointerLaterId)
             global.compositor.get_laters().remove(this._pointerLaterId);
         this._pointerLaterId = 0;
+        if (this._dockLaterId)
+            global.compositor.get_laters().remove(this._dockLaterId);
+        this._dockLaterId = 0;
+        global.display.disconnectObject(this);
+        global.window_manager.disconnectObject(this);
+        global.workspace_manager.disconnectObject(this);
         this._glow.destroy();
         Main.xdndHandler.disconnectObject(this);
         global.backend.get_dnd().disconnectObject(this);
@@ -1178,8 +1496,12 @@ export class Notch {
         if (dateMenu)
             dateMenu.container.visible = true;
 
-        for (const widget of this._widgets.values())
+        for (const widget of this._widgets.values()) {
             widget.destroy();
+            // Bubbles not in the split island right now have no parent to destroy them
+            if (widget.bubble && !widget.bubble.get_parent())
+                widget.bubble.destroy();
+        }
         this._widgets.clear();
 
         Main.layoutManager.removeChrome(this.actor);

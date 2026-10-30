@@ -81,7 +81,7 @@ export class Glow {
         this.actor.connect('repaint', area => this._paint(area));
         this.enabled = true;
         this.hoverEnabled = true;
-        this._shape = null; // {x, width, height, radius}, x in the notch container
+        this._shape = null; // {x, y, width, height, radius}, x/y in the notch container
         this._samples = []; // [{x, y, s}] along the edge, s in 0..1
         this._length = 0;
         this._event = null; // {kind, color, start, releasedAt}
@@ -98,20 +98,20 @@ export class Glow {
 
     // ---- inputs ----
 
-    /** The notch's current shape; x is the pill's left edge in the notch container. */
-    setShape({x, width, height, radius}) {
+    /** The lit shape: a rounded rect in the notch container. */
+    setShape({x, y, width, height, radius}) {
         const s = this._shape;
-        if (s && s.x === x && s.width === width && s.height === height && s.radius === radius)
+        if (s && s.x === x && s.y === y && s.width === width && s.height === height && s.radius === radius)
             return;
-        this._shape = {x, width, height, radius};
-        this.actor.set_position(x - MARGIN, 0);
-        this.actor.set_size(width + 2 * MARGIN, height + MARGIN);
+        this._shape = {x, y, width, height, radius};
+        this.actor.set_position(x - MARGIN, y - MARGIN);
+        this.actor.set_size(width + 2 * MARGIN, height + 2 * MARGIN);
         this._sample();
         if (this.actor.visible)
             this.actor.queue_repaint();
     }
 
-    /** The pointer relative to the pill's top-left corner. */
+    /** The pointer relative to the shape's top-left corner. */
     setPointer(x, y) {
         const shape = this._shape;
         if (!shape || !this.enabled || !this.hoverEnabled) {
@@ -126,7 +126,7 @@ export class Glow {
             // The edge point nearest the pointer
             let best = Infinity;
             for (const p of this._samples) {
-                const d = (p.x - MARGIN - x) ** 2 + (p.y - y) ** 2;
+                const d = (p.x - MARGIN - x) ** 2 + (p.y - MARGIN - y) ** 2;
                 if (d < best) {
                     best = d;
                     this._hover.s = p.s;
@@ -208,7 +208,7 @@ export class Glow {
         switch (event.kind) {
         case 'sweep':
             if (animate && age < SWEEP_MS) {
-                // A comet from the top-left around to the top-right, then the hold glow
+                // A comet once around the edge from the top middle, then the hold glow
                 const progress = age / SWEEP_MS;
                 const head = -0.05 + 1.1 * easeInOut(progress);
                 const d = head - s;
@@ -242,13 +242,15 @@ export class Glow {
 
     // ---- geometry ----
 
-    /** Samples the notch's open U: left side, bottom corners and edge, right side. */
+    /** Samples the edge's whole loop, from the top middle going left. */
     _sample() {
         const {width: w, height: h} = this._shape;
-        const r = Math.min(this._shape.radius, h, w / 2);
+        const r = Math.min(this._shape.radius, h / 2, w / 2);
         const x0 = MARGIN + 0.75;
         const x1 = MARGIN + w - 0.75;
-        const yb = h - 0.75;
+        const xm = MARGIN + w / 2;
+        const yt = MARGIN + 0.75;
+        const yb = MARGIN + h - 0.75;
         const rr = Math.max(0, r - 0.75);
         const points = [];
         const line = (ax, ay, bx, by) => {
@@ -263,12 +265,16 @@ export class Glow {
                 points.push([cx + rr * Math.cos(a), cy + rr * Math.sin(a)]);
             }
         };
-        line(x0, 0, x0, yb - rr);
+        line(xm, yt, x0 + rr, yt);
+        arc(x0 + rr, yt + rr, -Math.PI / 2, -Math.PI);
+        line(x0, yt + rr, x0, yb - rr);
         arc(x0 + rr, yb - rr, Math.PI, Math.PI / 2);
         line(x0 + rr, yb, x1 - rr, yb);
         arc(x1 - rr, yb - rr, Math.PI / 2, 0);
-        line(x1, yb - rr, x1, 0);
-        points.push([x1, 0]);
+        line(x1, yb - rr, x1, yt + rr);
+        arc(x1 - rr, yt + rr, 0, -Math.PI / 2);
+        line(x1 - rr, yt, xm, yt);
+        points.push([xm, yt]);
 
         let length = 0;
         const lengths = points.map((p, i) => {
@@ -282,15 +288,16 @@ export class Glow {
 
     _pillPath(cr) {
         const {width: w, height: h} = this._shape;
-        const r = Math.min(this._shape.radius, h, w / 2);
-        const x0 = MARGIN;
-        const x1 = MARGIN + w;
-        cr.moveTo(x0, -1);
-        cr.lineTo(x0, h - r);
-        cr.arcNegative(x0 + r, h - r, r, Math.PI, Math.PI / 2);
-        cr.lineTo(x1 - r, h);
-        cr.arcNegative(x1 - r, h - r, r, Math.PI / 2, 0);
-        cr.lineTo(x1, -1);
+        const r = Math.min(this._shape.radius, h / 2, w / 2);
+        const [x0, x1, yt, yb] = [MARGIN, MARGIN + w, MARGIN, MARGIN + h];
+        cr.moveTo(x0, yt + r);
+        cr.arc(x0 + r, yt + r, r, Math.PI, 1.5 * Math.PI);
+        cr.lineTo(x1 - r, yt);
+        cr.arc(x1 - r, yt + r, r, 1.5 * Math.PI, 2 * Math.PI);
+        cr.lineTo(x1, yb - r);
+        cr.arc(x1 - r, yb - r, r, 0, Math.PI / 2);
+        cr.lineTo(x0 + r, yb);
+        cr.arc(x0 + r, yb - r, r, Math.PI / 2, Math.PI);
         cr.closePath();
     }
 

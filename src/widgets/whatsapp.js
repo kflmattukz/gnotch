@@ -131,6 +131,7 @@ export class WhatsAppWidget {
         this.compactLeft = new St.Bin({child: this._callGlow});
         this._callLabel = new St.Label({style_class: 'gnotch-call-mini', y_align: Clutter.ActorAlign.CENTER});
         this.compactRight = new St.Bin({child: this._callLabel, y_align: Clutter.ActorAlign.CENTER});
+        this.bubble = new St.Icon({icon_name: 'call-start-symbolic', icon_size: 16, style_class: 'gnotch-call-icon'});
 
         for (const source of Main.messageTray.getSources())
             this._watchSource(source);

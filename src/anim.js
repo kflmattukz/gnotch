@@ -5,6 +5,7 @@
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 const {
@@ -302,6 +303,30 @@ export function swapIcon(icon, props) {
             apply(pendingIcon.get(icon));
             pendingIcon.delete(icon);
             icon.ease({opacity: 255, scale_x: 1, scale_y: 1, duration: 250, mode: EASE_OUT_QUAD});
+        },
+    });
+}
+
+/**
+ * Content comes into focus: starts blurred and sharpens, the soft reveal
+ * every drawer opening shares. The effect is off once sharp.
+ */
+export function blurIn(actor, {radius = 10, delay = 0, duration = 300} = {}) {
+    if (!animationsEnabled() || !actor.mapped)
+        return;
+    let effect = actor.get_effect('gnotch-blur');
+    if (!effect) {
+        effect = new Shell.BlurEffect({mode: Shell.BlurMode.ACTOR, brightness: 1});
+        actor.add_effect_with_name('gnotch-blur', effect);
+    }
+    actor.remove_transition('@effects.gnotch-blur.radius');
+    effect.set({radius, enabled: true});
+    actor.ease_property('@effects.gnotch-blur.radius', 0, {
+        delay,
+        duration,
+        mode: EASE_OUT_QUAD,
+        onStopped: () => {
+            effect.enabled = false;
         },
     });
 }

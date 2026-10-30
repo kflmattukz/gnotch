@@ -61,6 +61,7 @@ export class PrayerWidget {
         this._miniLabel = new St.Label({style_class: 'gnotch-prayer-mini', y_align: Clutter.ActorAlign.CENTER});
         this.compactLeft = new St.Bin({child: this._miniIcon});
         this.compactRight = new St.Bin({child: this._miniLabel, y_align: Clutter.ActorAlign.CENTER});
+        this.bubble = new St.Icon({icon_name: ICON, icon_size: 16, style_class: 'gnotch-prayer-icon'});
 
         this._tile = new QuickToggle({title: 'Prayer', icon_name: ICON});
         this._tile.connect('clicked', () => this._notch.selectWidget(this));

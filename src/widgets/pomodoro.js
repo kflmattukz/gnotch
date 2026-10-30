@@ -63,6 +63,8 @@ export class PomodoroWidget {
         this._miniLabel = new St.Label({style_class: 'gnotch-pomodoro-mini', y_align: Clutter.ActorAlign.CENTER});
         this.compactLeft = new St.Bin({child: this._iconGlow});
         this.compactRight = new St.Bin({child: this._miniLabel, y_align: Clutter.ActorAlign.CENTER});
+        // Split-island bubble: just the countdown
+        this.bubble = new St.Label({style_class: 'gnotch-pomodoro-mini', y_align: Clutter.ActorAlign.CENTER});
 
         this._tile = new QuickToggle({title: 'Pomodoro', icon_name: 'alarm-symbolic'});
         this._tile.connect('clicked', () => this._notch.selectWidget(this));
@@ -232,8 +234,11 @@ export class PomodoroWidget {
         this._miniIcon.icon_name = phase.icon;
         this._miniIcon.style_class = `gnotch-pomodoro-icon ${state}`;
         this._miniLabel.style_class = `gnotch-pomodoro-mini ${state}`;
-        if (this._miniLabel.text !== clock)
+        this.bubble.style_class = `gnotch-pomodoro-mini ${state}`;
+        if (this._miniLabel.text !== clock) {
             this._miniLabel.text = clock;
+            this.bubble.text = clock;
+        }
         // Paused timers breathe
         Anim.breathe(this._iconGlow, this._started && !this._running, {low: 90, duration: 900});
 

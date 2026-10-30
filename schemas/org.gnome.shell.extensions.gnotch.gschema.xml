@@ -2,7 +2,7 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.gnotch" path="/org/gnome/shell/extensions/gnotch/">
     <key name="enabled-widgets" type="as">
-      <default>['media', 'prayer', 'pomodoro', 'battery', 'network', 'calendar', 'todo', 'notifications', 'devices']</default>
+      <default>['media', 'prayer', 'pomodoro', 'battery', 'network', 'calendar', 'todo', 'notifications', 'devices', 'shelf']</default>
       <summary>Widgets shown in the notch</summary>
     </key>
     <key name="collapse-delay-ms" type="u">
@@ -33,6 +33,15 @@
     <key name="smart-info" type="b">
       <default>true</default>
       <summary>Peek for meetings starting soon, battery time left, low disk space and break reminders</summary>
+    </key>
+    <key name="capture-shortcut" type="as">
+      <default>['&lt;Super&gt;j']</default>
+      <summary>Quick capture: open the to-do entry, ready to type</summary>
+    </key>
+    <key name="top-bar-islands" type="b">
+      <default>true</default>
+      <summary>Top bar as floating islands</summary>
+      <description>The top bar turns transparent and its left and right parts become dark capsules beside the notch. It turns solid while a window touches it.</description>
     </key>
     <key name="hide-clock" type="b">
       <default>true</default>

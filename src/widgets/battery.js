@@ -34,6 +34,8 @@ export class BatteryWidget {
         this._labelGlow = new St.Bin({child: this._miniLabel, y_align: Clutter.ActorAlign.CENTER});
         this.compactLeft = new St.Bin({child: this._iconGlow});
         this.compactRight = new St.Bin({child: this._labelGlow, y_align: Clutter.ActorAlign.CENTER});
+        // Status glyph while plugged in or low, when something else owns the pill
+        this._statusIcon = new St.Icon({icon_size: 14, style_class: 'gnotch-status-icon'});
 
         // Home tile, like Shell's own power toggle: percentage, time left, opens Power settings
         this._tile = new QuickToggle({style_class: 'quick-toggle button gnotch-battery', visible: false});
@@ -112,6 +114,8 @@ export class BatteryWidget {
         this._miniLabel.style_class = `gnotch-battery-mini${state}`;
         this._miniIcon.style_class = `gnotch-battery-icon${state}`;
         this._tile.style_class = `quick-toggle button gnotch-battery${state}`;
+        this._statusIcon.set({gicon, style_class: `gnotch-status-icon${state}`});
+        this._notch.setStatus(this._statusIcon, charging || low, {widget: this});
 
         // Charging glows gently; low battery pulses faster
         Anim.breathe(this._iconGlow, p.State === UPower.DeviceState.CHARGING, {low: 120, duration: 1300});

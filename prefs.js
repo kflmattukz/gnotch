@@ -18,6 +18,7 @@ const WIDGETS = [
     ['todo', 'To-do', 'A local task list'],
     ['notifications', 'Notifications', 'Recent notifications'],
     ['devices', 'Drives', 'Mounted USB drives and disks'],
+    ['shelf', 'Shelf', 'Drop files on the notch to keep them at hand: open, copy or send them later'],
 ];
 
 // Same keys as METHODS in src/praytimes.js
@@ -130,6 +131,13 @@ export default class GnotchPreferences extends ExtensionPreferences {
         });
         settings.bind('hide-clock', clock, 'active', Gio.SettingsBindFlags.DEFAULT);
         behavior.add(clock);
+
+        const islands = new Adw.SwitchRow({
+            title: 'Top bar as floating islands',
+            subtitle: 'Transparent bar with dark capsules beside the notch; solid while a window touches it',
+        });
+        settings.bind('top-bar-islands', islands, 'active', Gio.SettingsBindFlags.DEFAULT);
+        behavior.add(islands);
 
         const glass = new Adw.SwitchRow({
             title: 'Frosted glass when expanded',

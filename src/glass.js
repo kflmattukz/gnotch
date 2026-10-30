@@ -15,7 +15,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {ExtensionState} from 'resource:///org/gnome/shell/misc/extensionUtils.js';
 
 const BMS_UUID = 'blur-my-shell@aunetx';
-const BOTTOM_CORNERS = 2; // Blur my Shell corner selection: 0 all, 1 top, 2 bottom
+const ALL_CORNERS = 0; // Blur my Shell corner selection: 0 all, 1 top, 2 bottom
 
 export class Glass {
     /** @param {Function} onAvailableChanged */
@@ -58,8 +58,8 @@ export class Glass {
             this._panelSettings = this._openPanelSettings(ext);
             this._pipeline = new DynamicPipeline(bms._effects_manager, bms._pipelines_manager,
                 this._panelSettings.get_string('pipeline'),
-                {corner_radius: this._radius, get_corners: () => BOTTOM_CORNERS});
-            // Follows the size of our actor, which fills the pill
+                {corner_radius: this._radius, get_corners: () => ALL_CORNERS});
+            // Follows the size of our actor, which fills the panel
             this._pipeline.attach_to_container(this.actor, 'gnotch-glass');
             this._pipeline.set_opacity_factor(this._progress, true);
 
@@ -81,7 +81,7 @@ export class Glass {
         return new Gio.Settings({settings_schema: schema});
     }
 
-    /** Bottom corner radius, updated every frame of the shape spring. */
+    /** Corner radius, updated every frame of the shape spring. */
     set radius(radius) {
         if (radius === this._radius)
             return;

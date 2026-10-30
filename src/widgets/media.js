@@ -8,7 +8,7 @@ import St from 'gi://St';
 import {loadInterfaceXML} from 'resource:///org/gnome/shell/misc/fileUtils.js';
 
 import * as Anim from '../anim.js';
-import {Cover} from '../cover.js';
+import {Cover, dominantColor} from '../cover.js';
 import {hostPath} from '../sandbox.js';
 
 const DBusProxy = Gio.DBusProxy.makeProxyWrapper(loadInterfaceXML('org.freedesktop.DBus'));
@@ -152,6 +152,7 @@ export class MediaWidget {
         this._skipDirection = 1;
         this._eqTimeout = 0;
         this._compactVisible = false;
+        this.ambientColor = null; // [r, g, b] of the current art, tints the panel
 
         this._buildCompact();
         this._buildPage();
@@ -185,6 +186,26 @@ export class MediaWidget {
             this.compactRight.add_child(bar);
             this._eqBars.push(bar);
         }
+
+        // Split-island bubble when another widget owns the pill
+        this._bubbleArt = new Cover({size: 18, radius: 9});
+        this.bubble = this._bubbleArt.actor;
+    }
+
+    // ---- controls (also used by the pill's gestures) ----
+
+    playPause() {
+        this._active?.playPause();
+    }
+
+    previous() {
+        this._skipDirection = -1;
+        this._active?.previous();
+    }
+
+    next() {
+        this._skipDirection = 1;
+        this._active?.next();
     }
 
     _buildPage() {
@@ -236,15 +257,9 @@ export class MediaWidget {
             style_class: 'gnotch-media-controls',
             x_align: Clutter.ActorAlign.START,
         });
-        this._prev = this._makeControl('media-skip-backward-symbolic', () => {
-            this._skipDirection = -1;
-            this._active?.previous();
-        });
-        this._playPause = this._makeControl('media-playback-start-symbolic', () => this._active?.playPause());
-        this._next = this._makeControl('media-skip-forward-symbolic', () => {
-            this._skipDirection = 1;
-            this._active?.next();
-        });
+        this._prev = this._makeControl('media-skip-backward-symbolic', () => this.previous());
+        this._playPause = this._makeControl('media-playback-start-symbolic', () => this.playPause());
+        this._next = this._makeControl('media-skip-forward-symbolic', () => this.next());
         this._playPause.add_style_class_name('primary');
         this._playPause.child.icon_size = 22;
         controls.add_child(this._prev);
@@ -359,6 +374,8 @@ export class MediaWidget {
                     apply, {dx: 18 * this._skipDirection});
             this._skipDirection = 1;
             this._miniArt.set(this._cover(p));
+            this._bubbleArt.set(this._cover(p));
+            this._syncAmbient(p);
             this._compactTitle.text = p?.title || p?.identity || '';
         }
 
@@ -382,6 +399,30 @@ export class MediaWidget {
             });
         }
         this._syncEqualizer();
+    }
+
+    _syncAmbient(player) {
+        this._ambientCancellable?.cancel();
+        this._ambientCancellable = null;
+        const url = player?.artUrl;
+        if (!url) {
+            this.ambientColor = null;
+            this._notch.syncAmbient();
+            return;
+        }
+        const cancellable = new Gio.Cancellable();
+        this._ambientCancellable = cancellable;
+        dominantColor(url, cancellable).then(color => {
+            this.ambientColor = color;
+        }).catch(e => {
+            if (cancellable.is_cancelled())
+                return;
+            console.debug(`gnotch: ambient colour: ${e.message}`);
+            this.ambientColor = null;
+        }).finally(() => {
+            if (!cancellable.is_cancelled())
+                this._notch.syncAmbient();
+        });
     }
 
     // ---- compact ----
@@ -430,8 +471,10 @@ export class MediaWidget {
     }
 
     destroy() {
+        this._ambientCancellable?.cancel();
         this._art.destroy();
         this._miniArt.destroy();
+        this._bubbleArt.destroy();
         if (this._eqTimeout)
             GLib.source_remove(this._eqTimeout);
         this._eqTimeout = 0;
